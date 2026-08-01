@@ -1,0 +1,1650 @@
+<title>up-tunnel — setup guide</title>
+
+<style>
+  /* ─────────────────────────────────────────────────────────────
+     Two-tone identity: amber = the device you're exposing,
+     azure = the public server. Used on the diagram, on every code
+     block, and nowhere decorative — so "where do I run this?"
+     is answerable at a glance.
+     ───────────────────────────────────────────────────────────── */
+  :root {
+    --ground:    #F1F4F8;
+    --surface:   #FFFFFF;
+    --sunken:    #E9EDF3;
+    --ink:       #131820;
+    --ink-soft:  #56616F;
+    --ink-faint: #808C9C;
+    --rule:      #DBE1EA;
+    --rule-soft: #E7EBF1;
+
+    --amber:     #9C6612;
+    --amber-bg:  #FBF1DE;
+    --azure:     #2B57AC;
+    --azure-bg:  #E6EDFA;
+    --alert:     #A33A2E;
+    --alert-bg:  #FBEAE7;
+
+    --code-bg:   #151A22;
+    --code-ink:  #DDE3EC;
+    --code-dim:  #7D8B9D;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", monospace;
+    --sans: "Avenir Next", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+
+    --measure: 68ch;
+    --radius: 5px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:    #0F131A;
+      --surface:   #161B23;
+      --sunken:    #1B212B;
+      --ink:       #E6EBF2;
+      --ink-soft:  #99A5B5;
+      --ink-faint: #6E7C8D;
+      --rule:      #262E3A;
+      --rule-soft: #1F262F;
+
+      --amber:     #E6A83B;
+      --amber-bg:  #2A2113;
+      --azure:     #7BA5F2;
+      --azure-bg:  #182337;
+      --alert:     #EE8878;
+      --alert-bg:  #2E1A17;
+
+      --code-bg:   #0B0F15;
+      --code-ink:  #D6DEE9;
+      --code-dim:  #6B7A8C;
+    }
+  }
+
+  /* The viewer's own toggle must beat the OS preference in both directions. */
+  :root[data-theme="light"] {
+    --ground: #F1F4F8; --surface: #FFFFFF; --sunken: #E9EDF3;
+    --ink: #131820; --ink-soft: #56616F; --ink-faint: #808C9C;
+    --rule: #DBE1EA; --rule-soft: #E7EBF1;
+    --amber: #9C6612; --amber-bg: #FBF1DE;
+    --azure: #2B57AC; --azure-bg: #E6EDFA;
+    --alert: #A33A2E; --alert-bg: #FBEAE7;
+    --code-bg: #151A22; --code-ink: #DDE3EC; --code-dim: #7D8B9D;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F131A; --surface: #161B23; --sunken: #1B212B;
+    --ink: #E6EBF2; --ink-soft: #99A5B5; --ink-faint: #6E7C8D;
+    --rule: #262E3A; --rule-soft: #1F262F;
+    --amber: #E6A83B; --amber-bg: #2A2113;
+    --azure: #7BA5F2; --azure-bg: #182337;
+    --alert: #EE8878; --alert-bg: #2E1A17;
+    --code-bg: #0B0F15; --code-ink: #D6DEE9; --code-dim: #6B7A8C;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── shell ────────────────────────────────────────────────── */
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 clamp(1.1rem, 4vw, 2.5rem);
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: clamp(2rem, 5vw, 4.5rem);
+    align-items: start;
+  }
+  @media (max-width: 940px) {
+    .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  }
+
+  /* ── masthead ─────────────────────────────────────────────── */
+  .masthead {
+    grid-column: 1 / -1;
+    padding: clamp(3rem, 8vw, 5.5rem) 0 clamp(2rem, 4vw, 3rem);
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: clamp(2rem, 5vw, 3.5rem);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 1.1rem;
+  }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(2rem, 5.4vw, 3.15rem);
+    font-weight: 500;
+    letter-spacing: -0.035em;
+    line-height: 1.06;
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+  }
+  h1 .dim { color: var(--ink-faint); }
+  .standfirst {
+    font-size: clamp(1.02rem, 2vw, 1.16rem);
+    color: var(--ink-soft);
+    max-width: 56ch;
+    margin: 0 0 2.4rem;
+    text-wrap: pretty;
+  }
+
+  /* ── the architecture diagram ─────────────────────────────── */
+  .wire { overflow-x: auto; padding-bottom: 0.4rem; }
+  .wire-inner {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    min-width: 660px;
+  }
+  .node {
+    flex: 1 1 0;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 0.95rem 1.05rem 1.05rem;
+  }
+  .node.mid { border-color: var(--azure); box-shadow: inset 0 0 0 1px var(--azure-bg); }
+  .node.end { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber-bg); }
+  .node-role {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+  .node-name { font-weight: 600; font-size: 0.98rem; display: block; margin-bottom: 0.5rem; }
+  .node ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.18rem; }
+  .node li {
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .link {
+    flex: 0 0 clamp(64px, 9vw, 104px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0 0.2rem;
+  }
+  .link-label {
+    font-family: var(--mono);
+    font-size: 0.63rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+  .link-bar { width: 100%; height: 2px; background: var(--rule); position: relative; }
+  .link-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, var(--azure), transparent);
+    opacity: 0.85;
+    animation: flow 2.6s linear infinite;
+  }
+  .link.reverse .link-bar::after {
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    animation-direction: reverse;
+  }
+  @keyframes flow {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .link-bar::after { animation: none; opacity: 0.5; }
+  }
+  .wire-note {
+    font-size: 0.87rem;
+    color: var(--ink-soft);
+    margin: 1.1rem 0 0;
+    max-width: 62ch;
+  }
+
+  /* ── sidebar ──────────────────────────────────────────────── */
+  .toc { position: sticky; top: 1.5rem; }
+  @media (max-width: 940px) {
+    .toc {
+      position: static;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--rule);
+    }
+  }
+  .toc h2 {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.8rem;
+    font-weight: 500;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; }
+  .toc a {
+    display: block;
+    padding: 0.24rem 0 0.24rem 0.75rem;
+    border-left: 2px solid var(--rule-soft);
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 0.895rem;
+  }
+  .toc a:hover { color: var(--ink); border-left-color: var(--rule); }
+  .toc a.on { color: var(--ink); border-left-color: var(--azure); font-weight: 600; }
+  .toc a:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+
+  /* ── prose ────────────────────────────────────────────────── */
+  main { min-width: 0; padding-bottom: 6rem; }
+  section { margin-bottom: clamp(3rem, 7vw, 4.75rem); scroll-margin-top: 1.5rem; }
+  main h2 {
+    font-size: clamp(1.42rem, 3vw, 1.72rem);
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    margin: 0 0 0.35rem;
+    text-wrap: balance;
+  }
+  main h2 + .lede { color: var(--ink-soft); margin: 0 0 2rem; max-width: var(--measure); }
+  main h3 {
+    font-size: 1.055rem;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+    margin: 2.4rem 0 0.6rem;
+  }
+  main h4 {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 1.9rem 0 0.5rem;
+  }
+  p, ul, ol { max-width: var(--measure); }
+  p { margin: 0 0 0.95rem; text-wrap: pretty; }
+  main > section > ul, main > section > ol,
+  .step-body > ul, .step-body > ol { padding-left: 1.15rem; margin: 0 0 1.1rem; }
+  li { margin-bottom: 0.3rem; }
+  a { color: var(--azure); text-decoration-thickness: 1px; text-underline-offset: 0.16em; }
+  strong { font-weight: 650; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.855em;
+    background: var(--sunken);
+    padding: 0.1em 0.34em;
+    border-radius: 3px;
+    word-break: break-word;
+  }
+
+  /* ── command blocks: colour-coded by where they run ───────── */
+  .cmd {
+    margin: 0.85rem 0 1.4rem;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--rule);
+    background: var(--code-bg);
+  }
+  .cmd-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.42rem 0.55rem 0.42rem 0.75rem;
+    background: rgba(255, 255, 255, 0.035);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .loc {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--code-dim);
+  }
+  .loc::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .cmd[data-where="server"] .loc { color: #8FB3F5; }
+  .cmd[data-where="device"] .loc { color: #E6A83B; }
+  .cmd[data-where="dns"]    .loc { color: #9FB0C4; }
+  .copy {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--code-dim);
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+  }
+  .copy:hover { color: var(--code-ink); border-color: rgba(255, 255, 255, 0.3); }
+  .copy:focus-visible { outline: 2px solid #8FB3F5; outline-offset: 1px; }
+  .copy.done { color: #7BD3A0; border-color: #7BD3A0; }
+  .cmd pre {
+    margin: 0;
+    padding: 0.85rem 0.95rem;
+    overflow-x: auto;
+    background: var(--code-bg);
+  }
+  .cmd code {
+    background: none;
+    padding: 0;
+    color: var(--code-ink);
+    font-size: 0.815rem;
+    line-height: 1.68;
+    white-space: pre;
+  }
+  .cmd .c { color: var(--code-dim); }
+
+  /* ── numbered install steps (a real sequence, hence numbers) ─ */
+  .step {
+    display: grid;
+    grid-template-columns: 2.1rem minmax(0, 1fr);
+    gap: 0 1.1rem;
+    padding-top: 2.1rem;
+    border-top: 1px solid var(--rule-soft);
+    margin-top: 2.1rem;
+  }
+  .step:first-of-type { border-top: none; margin-top: 1rem; padding-top: 0; }
+  .step-n {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--azure);
+    background: var(--azure-bg);
+    border-radius: var(--radius);
+    height: 2.1rem;
+    display: grid;
+    place-items: center;
+    font-weight: 600;
+  }
+  .step-h { margin: 0.22rem 0 0.55rem; font-size: 1.09rem; font-weight: 650; }
+  .step-body { min-width: 0; grid-column: 2; }
+  @media (max-width: 560px) {
+    .step { grid-template-columns: minmax(0, 1fr); gap: 0.6rem; }
+    .step-n { width: 2.1rem; }
+    .step-body { grid-column: 1; }
+  }
+
+  /* ── callouts ─────────────────────────────────────────────── */
+  .note {
+    border-left: 3px solid var(--azure);
+    background: var(--azure-bg);
+    padding: 0.85rem 1.05rem;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    margin: 1.2rem 0;
+    max-width: var(--measure);
+  }
+  .note.warn { border-left-color: var(--alert); background: var(--alert-bg); }
+  .note.warn strong { color: var(--alert); }
+  .note p:last-child { margin-bottom: 0; }
+  .note-t {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.32rem;
+    color: var(--azure);
+  }
+  .note.warn .note-t { color: var(--alert); }
+
+  /* ── tables ───────────────────────────────────────────────── */
+  .tw { overflow-x: auto; margin: 1.1rem 0 1.5rem; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 480px;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.52rem 0.85rem 0.52rem 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    border-bottom-color: var(--rule);
+  }
+  td code { font-size: 0.8rem; white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ── platform tabs ────────────────────────────────────────── */
+  .tabs { display: flex; gap: 0.3rem; border-bottom: 1px solid var(--rule); margin: 1.4rem 0 0; flex-wrap: wrap; }
+  .tab {
+    font: inherit;
+    font-size: 0.885rem;
+    font-weight: 550;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--ink-soft);
+    padding: 0.45rem 0.7rem;
+    cursor: pointer;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--amber); }
+  .tab:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+  .panel { padding-top: 1.2rem; }
+  .panel[hidden] { display: none; }
+
+  /* ── recipe cards ─────────────────────────────────────────── */
+  .recipes { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr)); max-width: none; }
+  .recipe {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 1.05rem 1.1rem 1.15rem;
+  }
+  .recipe h3 { margin: 0 0 0.35rem; font-size: 0.99rem; }
+  .recipe p { font-size: 0.885rem; color: var(--ink-soft); margin: 0 0 0.7rem; max-width: none; }
+  .recipe .cmd { margin: 0; }
+  .recipe .cmd code { font-size: 0.765rem; }
+
+  /* ── FAQ ──────────────────────────────────────────────────── */
+  details {
+    border-bottom: 1px solid var(--rule-soft);
+    max-width: var(--measure);
+  }
+  summary {
+    cursor: pointer;
+    padding: 0.72rem 0;
+    font-weight: 600;
+    font-size: 0.955rem;
+    list-style: none;
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: "+";
+    font-family: var(--mono);
+    color: var(--amber);
+    font-weight: 400;
+    flex: none;
+  }
+  details[open] summary::before { content: "\2212"; }
+  summary:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+  details > *:not(summary) { margin-left: 1.2rem; }
+  details > p:last-child { padding-bottom: 0.7rem; }
+
+  /* ── footer ───────────────────────────────────────────────── */
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.5rem;
+    color: var(--ink-faint);
+    font-size: 0.87rem;
+    max-width: var(--measure);
+  }
+  footer .files {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    display: grid;
+    gap: 0.2rem;
+    margin-top: 0.8rem;
+  }
+</style>
+
+<div class="shell">
+  <header class="masthead">
+    <p class="eyebrow">Self-hosted tunnel · setup guide</p>
+    <h1>up-tunnel <span class="dim">/</span> your own ngrok</h1>
+    <p class="standfirst">
+      A small server on your EC2 box gives any local device a public HTTPS URL or a public TCP
+      port — without touching your home router.
+    </p>
+
+    <div class="wire">
+      <div class="wire-inner">
+        <div class="node">
+          <span class="node-role">public</span>
+          <span class="node-name">A visitor</span>
+          <ul>
+            <li>https://mac.tun.you.com</li>
+            <li>ssh -p 20022 you.com</li>
+          </ul>
+        </div>
+
+        <div class="link">
+          <span class="link-label">tcp 443</span>
+          <div class="link-bar"></div>
+        </div>
+
+        <div class="node mid">
+          <span class="node-role">your ec2 box</span>
+          <span class="node-name">Tunnel server</span>
+          <ul>
+            <li>nginx :443 (TLS)</li>
+            <li>node :8080 http</li>
+            <li>node :8081 control</li>
+            <li>:20000–20099 tcp</li>
+          </ul>
+        </div>
+
+        <div class="link reverse">
+          <span class="link-label">wss 443</span>
+          <div class="link-bar"></div>
+        </div>
+
+        <div class="node end">
+          <span class="node-role">behind nat</span>
+          <span class="node-name">Your device</span>
+          <ul>
+            <li>python or node agent</li>
+            <li>→ 127.0.0.1:3000</li>
+            <li>→ 127.0.0.1:22</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <p class="wire-note">
+      The device dials <em>out</em> to the server and keeps one WebSocket open. Every tunnelled
+      connection is multiplexed over it, so there is nothing to forward on your router and
+      nothing to open on your firewall.
+    </p>
+  </header>
+
+  <nav class="toc" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#need">What you need</a></li>
+      <li><a href="#server">Install the server</a></li>
+      <li><a href="#client">Install a client</a></li>
+      <li><a href="#lifetime">Staying connected</a></li>
+      <li><a href="#recipes">Recipes</a></li>
+      <li><a href="#ops">Running it</a></li>
+      <li><a href="#trouble">Troubleshooting</a></li>
+      <li><a href="#reference">Reference</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section id="need">
+      <h2>What you need</h2>
+      <p class="lede">Two colours run through this guide: <strong>azure</strong> marks a command
+      for the remote server, <strong>amber</strong> marks one for the device you're exposing.
+      Running a step in the wrong place is the most common way this goes sideways.</p>
+
+      <div class="tw">
+        <table>
+          <thead>
+            <tr><th>Thing</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>An EC2 instance</strong></td><td>Ubuntu 22.04 or 24.04. A <code>t4g.nano</code> is enough — the server is a byte pump, not a compute load.</td></tr>
+            <tr><td><strong>An Elastic IP</strong></td><td>A default public IP changes on stop/start and silently breaks every DNS record below.</td></tr>
+            <tr><td><strong>A domain</strong></td><td>Any domain where you can add an A record and a TXT record.</td></tr>
+            <tr><td><strong>Node.js 20+</strong></td><td>Installed in step 1. Ubuntu's packaged <code>nodejs</code> is too old.</td></tr>
+            <tr><td><strong>An agent runtime</strong></td><td>On each device you want to expose: <strong>either</strong> Python 3.9+ <strong>or</strong> Node 20+. Two interchangeable agents ship — pick per machine.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>This guide uses <code>example.com</code> throughout. Substitute your own domain
+      everywhere it appears.</p>
+
+      <div class="note">
+        <span class="note-t">Version pinning</span>
+        <p>Node versions are pinned in <code>.nvmrc</code> — run <code>nvm use</code> in
+        <code>server/</code> or <code>client-node/</code>. The Python client ships a
+        <code>Pipfile</code> with a committed <code>Pipfile.lock</code>, so
+        <code>pipenv install --dev</code> gives you the exact dependency set that was
+        tested.</p>
+      </div>
+    </section>
+
+    <section id="server">
+      <h2>Install the server</h2>
+      <p class="lede">All eight steps run on the EC2 box, except the DNS records in step 0 which
+      you create at your domain registrar. Budget about 30 minutes, most of it waiting for DNS
+      to propagate.</p>
+
+      <div class="step">
+        <div class="step-n">0</div>
+        <div class="step-body">
+          <h3 class="step-h">DNS records and the security group</h3>
+          <p>Two A records, both pointing at your Elastic IP:</p>
+          <div class="tw">
+            <table>
+              <thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>A</td><td><code>tunnel.example.com</code></td><td>your Elastic IP</td></tr>
+                <tr><td>A</td><td><code>*.tun.example.com</code></td><td>your Elastic IP</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>The wildcard is the whole point — once it exists you can invent
+          <code>anything.tun.example.com</code> without ever touching DNS again.</p>
+
+          <div class="cmd" data-where="dns">
+            <div class="cmd-head"><span class="loc">verify from anywhere</span><button class="copy">Copy</button></div>
+<pre><code>dig +short tunnel.example.com
+dig +short anything.tun.example.com   <span class="c"># must return the same IP</span></code></pre>
+          </div>
+
+          <p>Then open these inbound ports on the instance's security group:</p>
+          <div class="tw">
+            <table>
+              <thead><tr><th>Port</th><th>Source</th><th>Why</th></tr></thead>
+              <tbody>
+                <tr><td class="num">22</td><td>your IP only</td><td>your own admin SSH</td></tr>
+                <tr><td class="num">80</td><td>0.0.0.0/0</td><td>HTTPS redirect, certificate renewal</td></tr>
+                <tr><td class="num">443</td><td>0.0.0.0/0</td><td>agents plus every HTTP tunnel</td></tr>
+                <tr><td class="num">20000–20099</td><td>0.0.0.0/0</td><td>public TCP tunnels</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Narrow that TCP range to what you'll actually use. If SSH on 20022 is the only TCP
+          tunnel you want, open exactly that one port.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-body">
+          <h3 class="step-h">Node.js 22</h3>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo apt update &amp;&amp; sudo apt install -y curl git
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+node --version        <span class="c"># expect v22.x — anything &gt;= 20 works</span></code></pre>
+          </div>
+          <p>A system-wide NodeSource install is the right call <em>on the server</em>, because
+          nvm lives in a shell profile and systemd never loads one. The <code>.nvmrc</code> in
+          the repo is for your laptop, where you probably juggle versions:</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">on your laptop</span><button class="copy">Copy</button></div>
+<pre><code>cd server &amp;&amp; nvm use    <span class="c"># `nvm install` first if you lack Node 22</span></code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-body">
+          <h3 class="step-h">A service user, and the code</h3>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo useradd --system --create-home --home-dir /opt/uptunnel \
+             --shell /usr/sbin/nologin uptunnel
+sudo mkdir -p /etc/uptunnel /var/log/uptunnel
+sudo chown uptunnel:uptunnel /var/log/uptunnel
+
+sudo git clone https://github.com/your/up-tunnel /opt/uptunnel/src
+sudo chown -R uptunnel:uptunnel /opt/uptunnel/src</code></pre>
+          </div>
+          <p>No repository yet? Push it from your laptop instead:</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">on your laptop</span><button class="copy">Copy</button></div>
+<pre><code>rsync -av --exclude node_modules --exclude dist --exclude .git \
+      ./ ubuntu@tunnel.example.com:/tmp/up-tunnel/</code></pre>
+          </div>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo mv /tmp/up-tunnel /opt/uptunnel/src
+sudo chown -R uptunnel:uptunnel /opt/uptunnel/src</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-body">
+          <h3 class="step-h">Build it</h3>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>cd /opt/uptunnel/src/server
+sudo -u uptunnel npm ci --omit=dev
+sudo -u uptunnel npm install --no-save typescript @types/node @types/ws
+sudo -u uptunnel npx tsc -p tsconfig.json
+sudo ln -sfn /opt/uptunnel/src/server /opt/uptunnel/server
+
+ls /opt/uptunnel/server/dist/index.js   <span class="c"># should exist</span></code></pre>
+          </div>
+          <p><code>npm ci --omit=dev</code> installs the one runtime dependency
+          (<code>ws</code>); the next line adds the compiler without recording it in
+          <code>package.json</code>.</p>
+          <div class="note">
+            <span class="note-t">Alternative</span>
+            <p>Don't want a toolchain on the server? Run <code>npm install &amp;&amp; npm run
+            build</code> on your laptop and copy <code>server/dist/</code> up. The server only
+            needs <code>dist/</code>, <code>package.json</code>, and a
+            <code>node_modules</code> containing <code>ws</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">4</div>
+        <div class="step-body">
+          <h3 class="step-h">Create a token per device</h3>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>openssl rand -hex 24    <span class="c"># run once per device, keep each output</span></code></pre>
+          </div>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo tee /etc/uptunnel/tokens.json &gt;/dev/null &lt;&lt;'EOF'
+{
+  "tokens": [
+    {
+      "name": "macbook",
+      "token": "PASTE_FIRST_SECRET",
+      "subdomains": ["mac", "mac-*"],
+      "ports": [20000, 20019]
+    },
+    {
+      "name": "raspberrypi",
+      "token": "PASTE_SECOND_SECRET",
+      "subdomains": ["pi", "pi-*"],
+      "ports": [20020, 20039]
+    }
+  ]
+}
+EOF
+sudo chown uptunnel:uptunnel /etc/uptunnel/tokens.json
+sudo chmod 600 /etc/uptunnel/tokens.json</code></pre>
+          </div>
+          <div class="tw">
+            <table>
+              <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td><code>name</code></td><td>Label shown in logs and <code>/status</code>.</td></tr>
+                <tr><td><code>token</code></td><td>The secret this device presents. At least 16 characters.</td></tr>
+                <tr><td><code>subdomains</code></td><td>Patterns this token may claim. <code>*</code> matches any label, <code>pi-*</code> matches a prefix. Omit to allow anything free.</td></tr>
+                <tr><td><code>ports</code></td><td>Inclusive public TCP port range this token may claim.</td></tr>
+                <tr><td><code>maxTunnels</code></td><td>Cap on simultaneous tunnels. Defaults to 32.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>One token per device means you can revoke one without disturbing the others, and
+          the per-token grants stop a compromised Pi from hijacking your laptop's subdomain.</p>
+          <div class="note warn">
+            <span class="note-t">Remember</span>
+            <p><strong>Tokens are read once, at startup.</strong> After editing this file run
+            <code>sudo systemctl restart uptunnel</code> or the new device will be rejected as
+            <code>unauthorized</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">5</div>
+        <div class="step-body">
+          <h3 class="step-h">Configure the server</h3>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo tee /etc/uptunnel/uptunnel.env &gt;/dev/null &lt;&lt;'EOF'
+CONTROL_HOST=127.0.0.1
+CONTROL_PORT=8081
+CONTROL_PATH=/control
+
+HTTP_HOST=127.0.0.1
+HTTP_PORT=8080
+HTTP_DOMAIN=tun.example.com
+PUBLIC_SCHEME=https
+
+TCP_BIND_HOST=0.0.0.0
+TCP_PORT_MIN=20000
+TCP_PORT_MAX=20099
+PUBLIC_TCP_HOST=tunnel.example.com
+
+TOKENS_FILE=/etc/uptunnel/tokens.json
+
+ADMIN_HOST=127.0.0.1
+ADMIN_PORT=8082
+
+LOG_LEVEL=info
+LOG_FORMAT=json
+EOF
+sudo chown root:uptunnel /etc/uptunnel/uptunnel.env
+sudo chmod 640 /etc/uptunnel/uptunnel.env</code></pre>
+          </div>
+          <p>Two details worth understanding rather than copying blindly:</p>
+          <ul>
+            <li><code>CONTROL_HOST</code> and <code>HTTP_HOST</code> are <code>127.0.0.1</code>
+            deliberately — only nginx talks to them, so they're never directly reachable from
+            the internet.</li>
+            <li><code>TCP_BIND_HOST</code> is <code>0.0.0.0</code> because those ports
+            <em>are</em> the public entry points. nginx isn't involved in TCP tunnels at
+            all.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">6</div>
+        <div class="step-body">
+          <h3 class="step-h">Get a wildcard certificate</h3>
+          <p>Let's Encrypt issues wildcards <strong>only</strong> over a DNS challenge, so the
+          usual <code>certbot --nginx</code> webroot flow cannot work here.</p>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo apt install -y certbot
+sudo certbot certonly --manual --preferred-challenges dns \
+  -d tun.example.com -d '*.tun.example.com' -d tunnel.example.com</code></pre>
+          </div>
+          <p>Certbot prints a TXT value. Create <code>_acme-challenge.tun.example.com</code>
+          with it at your DNS provider, confirm it has propagated, then press Enter:</p>
+          <div class="cmd" data-where="dns">
+            <div class="cmd-head"><span class="loc">verify from anywhere</span><button class="copy">Copy</button></div>
+<pre><code>dig +short TXT _acme-challenge.tun.example.com</code></pre>
+          </div>
+          <div class="note warn">
+            <span class="note-t">Renewal</span>
+            <p><code>--manual</code> means renewal is manual too, every 90 days. For unattended
+            renewal use your provider's DNS plugin — for Route 53:</p>
+            <div class="cmd" data-where="server">
+              <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo apt install -y python3-certbot-dns-route53
+sudo certbot certonly --dns-route53 \
+  -d tun.example.com -d '*.tun.example.com' -d tunnel.example.com
+sudo systemctl enable --now certbot.timer</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">7</div>
+        <div class="step-body">
+          <h3 class="step-h">Point nginx at it</h3>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo apt install -y nginx
+sudo cp /opt/uptunnel/src/deploy/nginx/uptunnel.conf \
+        /etc/nginx/sites-available/uptunnel
+sudo sed -i 's/example\.com/YOURDOMAIN.com/g' /etc/nginx/sites-available/uptunnel
+sudo ln -sf /etc/nginx/sites-available/uptunnel /etc/nginx/sites-enabled/uptunnel
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
+          </div>
+          <p>Two things in that config are load-bearing:</p>
+          <h4>proxy_read_timeout 7d</h4>
+          <p>An agent's WebSocket sits idle between requests. nginx's default 60 seconds would
+          silently kill every tunnel a minute after it connects.</p>
+          <h4>The Connection: close mapping</h4>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">already in the shipped config</span><button class="copy">Copy</button></div>
+<pre><code>map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}</code></pre>
+          </div>
+          <p>For non-WebSocket requests this sends <code>Connection: close</code> upstream,
+          which stops nginx pooling upstream connections. That matters because the tunnel server
+          reads the <code>Host</code> header once per connection and then pipes raw bytes — a
+          pooled connection carrying a later request for a different subdomain would be
+          misrouted.</p>
+          <div class="note warn">
+            <span class="note-t">Don't</span>
+            <p>Do not add a <code>keepalive</code> directive to an upstream block for these
+            locations. Requests would start landing on the wrong tunnel.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">8</div>
+        <div class="step-body">
+          <h3 class="step-h">Start it</h3>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo cp /opt/uptunnel/src/deploy/systemd/uptunnel.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now uptunnel
+sudo systemctl status uptunnel --no-pager</code></pre>
+          </div>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>curl -s localhost:8082/healthz               <span class="c"># -&gt; ok</span>
+curl -s localhost:8082/status | jq           <span class="c"># agents and tunnels</span>
+curl -sI https://tunnel.example.com/healthz  <span class="c"># -&gt; 200, through nginx</span>
+sudo journalctl -u uptunnel -f               <span class="c"># live logs</span></code></pre>
+          </div>
+          <p>If <code>/healthz</code> answers both on localhost and through nginx, the server is
+          finished. On to the client.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="client">
+      <h2>Install a client</h2>
+      <p class="lede">Two agents ship, and they're <strong>interchangeable</strong> — same wire
+      protocol, same flags, same config file. Pick whichever matches the machine. Both need
+      only the control URL and this device's token.</p>
+
+      <div class="tw">
+        <table>
+          <thead><tr><th>Agent</th><th>Directory</th><th>Choose it when</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Python</strong></td><td><code>client/</code></td><td>Raspberry Pi, a box that already has Python, or you want the smaller install.</td></tr>
+            <tr><td><strong>Node</strong></td><td><code>client-node/</code></td><td>You already run Node, or you want to embed the agent in a JS program as a library.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" aria-controls="p-pipenv" id="t-pipenv">Python · pipenv</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="p-venv" id="t-venv">Python · venv</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="p-node" id="t-node">Node</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="p-win" id="t-win">Windows</button>
+      </div>
+
+      <div class="panel" id="p-pipenv" role="tabpanel" aria-labelledby="t-pipenv">
+        <p>Uses the committed <code>Pipfile.lock</code>, so you get the exact dependency set
+        that was tested.</p>
+        <div class="cmd" data-where="device">
+          <div class="cmd-head"><span class="loc">on your device</span><button class="copy">Copy</button></div>
+<pre><code>cd client
+pipenv install --dev        <span class="c"># --dev also brings PyYAML, for up.yaml configs</span>
+pipenv run uptunnel --version
+
+<span class="c"># handy entry points</span>
+pipenv run uptunnel http 3000 --subdomain mac
+pipenv run test             <span class="c"># protocol conformance tests</span>
+pipenv shell                <span class="c"># drop into the venv</span></code></pre>
+        </div>
+        <div class="note">
+          <span class="note-t">Python version</span>
+          <p>The <code>Pipfile</code> pins <code>python_version = "3.11"</code>. If that isn't
+          on the machine, either install it or run <code>pipenv --python 3.9 install</code> to
+          use what you have — the code supports 3.9 and up.</p>
+        </div>
+      </div>
+
+      <div class="panel" id="p-venv" role="tabpanel" aria-labelledby="t-venv" hidden>
+        <p>If you'd rather not add pipenv to a device.</p>
+        <div class="cmd" data-where="device">
+          <div class="cmd-head"><span class="loc">on your device</span><button class="copy">Copy</button></div>
+<pre><code><span class="c"># Raspberry Pi / Debian only:</span>
+sudo apt install -y python3-venv
+
+python3 -m venv ~/.uptunnel-venv
+~/.uptunnel-venv/bin/pip install /path/to/up-tunnel/client
+~/.uptunnel-venv/bin/uptunnel --version
+
+<span class="c"># optional convenience</span>
+echo 'alias uptunnel="$HOME/.uptunnel-venv/bin/uptunnel"' &gt;&gt; ~/.zshrc &amp;&amp; source ~/.zshrc</code></pre>
+        </div>
+      </div>
+
+      <div class="panel" id="p-node" role="tabpanel" aria-labelledby="t-node" hidden>
+        <div class="cmd" data-where="device">
+          <div class="cmd-head"><span class="loc">on your device</span><button class="copy">Copy</button></div>
+<pre><code>cd client-node
+nvm use              <span class="c"># reads .nvmrc; `nvm install` first if needed</span>
+npm install
+npm run build
+node dist/cli.js --version
+
+<span class="c"># put it on your PATH as `uptunnel`</span>
+npm link
+
+<span class="c"># or run straight from TypeScript while developing</span>
+npm run dev -- http 3000 --subdomain mac</code></pre>
+        </div>
+        <p><code>npm install</code> pulls <code>yaml</code> as an optional dependency for
+        <code>up.yaml</code> configs. A <code>.json</code> config needs only
+        <code>ws</code>.</p>
+        <div class="note">
+          <span class="note-t">Also a library</span>
+          <p>The Node agent can be embedded in your own program — useful for exposing an app's
+          dev server from inside the app, with no second process:</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">your code</span><button class="copy">Copy</button></div>
+<pre><code>import { Agent } from "uptunnel-client";
+
+await new Agent({
+  server: "wss://tunnel.example.com/control",
+  token: process.env.UPTUNNEL_TOKEN,
+  name: "my-service",
+  insecure: false,
+  tunnels: [{
+    name: "web", kind: "http", subdomain: "app",
+    targetHost: "127.0.0.1", targetPort: 3000,
+  }],
+}).runForever();</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="p-win" role="tabpanel" aria-labelledby="t-win" hidden>
+        <div class="cmd" data-where="device">
+          <div class="cmd-head"><span class="loc">on your device · powershell</span><button class="copy">Copy</button></div>
+<pre><code><span class="c"># Python agent</span>
+cd client
+pipenv install --dev
+pipenv run uptunnel --version
+
+<span class="c"># or the Node agent</span>
+cd client-node
+nvm use
+npm install &amp;&amp; npm run build
+node dist\cli.js --version</code></pre>
+        </div>
+      </div>
+
+      <h3>Your first tunnel</h3>
+      <p>Identical for both agents.</p>
+      <div class="cmd" data-where="device">
+        <div class="cmd-head"><span class="loc">on your device</span><button class="copy">Copy</button></div>
+<pre><code>export UPTUNNEL_SERVER=wss://tunnel.example.com/control
+export UPTUNNEL_TOKEN=the-secret-for-this-device
+
+python3 -m http.server 3000 &amp;        <span class="c"># something to expose</span>
+uptunnel http 3000 --subdomain test</code></pre>
+      </div>
+      <div class="cmd">
+        <div class="cmd-head"><span class="loc">what you should see</span><button class="copy">Copy</button></div>
+<pre><code>14:02:11 INFO  connecting to wss://tunnel.example.com/control
+14:02:11 INFO  connected as my-laptop (agent ag_9e807a16d29b, window 256KiB)
+14:02:11 INFO  test       https://test.tun.example.com  -&gt;  127.0.0.1:3000</code></pre>
+      </div>
+      <p>Open that URL on your phone. Ctrl-C stops the agent and releases the subdomain.</p>
+
+      <h3>Command reference</h3>
+      <div class="cmd" data-where="device">
+        <div class="cmd-head"><span class="loc">on your device</span><button class="copy">Copy</button></div>
+<pre><code>uptunnel http &lt;port|host:port&gt; --subdomain &lt;name&gt; [--rewrite-host]
+uptunnel tcp  &lt;port|host:port&gt; [--remote-port &lt;n&gt;]
+uptunnel [--config up.yaml]      <span class="c"># run every tunnel in the config</span></code></pre>
+      </div>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>--server</code></td><td>Control URL, or set <code>UPTUNNEL_SERVER</code>.</td></tr>
+            <tr><td><code>--token</code></td><td>This device's secret, or set <code>UPTUNNEL_TOKEN</code>.</td></tr>
+            <tr><td><code>--name</code></td><td>Label in server logs. Defaults to the hostname.</td></tr>
+            <tr><td><code>--subdomain</code></td><td>Required for <code>http</code>. Becomes <code>NAME.tun.example.com</code>.</td></tr>
+            <tr><td><code>--remote-port</code></td><td>Preferred public port for <code>tcp</code>. The server picks one if omitted.</td></tr>
+            <tr><td><code>--rewrite-host</code></td><td>Rewrite <code>Host</code> to the local target. Vite, webpack and Angular need this.</td></tr>
+            <tr><td><code>--insecure</code></td><td>Skip TLS verification. Self-signed certs only.</td></tr>
+            <tr><td><code>-v</code></td><td>Debug logging. <code>-vv</code> on the Python agent adds raw WebSocket frames.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Targets accept a bare port (<code>3000</code>), a host and port
+      (<code>192.168.1.50:80</code>), or IPv6 (<code>[::1]:3000</code>). A bare port means
+      <code>127.0.0.1</code> — so exposing another machine on your LAN just needs its
+      address.</p>
+
+      <h3>A config file, for anything you run twice</h3>
+      <p><code>up.yaml</code> or <code>up.json</code> in the working directory is picked up
+      automatically. All the tunnels come up on one WebSocket.</p>
+      <div class="cmd" data-where="device">
+        <div class="cmd-head"><span class="loc">on your device · up.yaml</span><button class="copy">Copy</button></div>
+<pre><code>server: wss://tunnel.example.com/control
+token: the-secret-for-this-device
+name: macbook
+
+tunnels:
+  - name: web
+    kind: http
+    subdomain: mac        <span class="c"># -&gt; https://mac.tun.example.com</span>
+    target: 3000
+    rewrite_host: true    <span class="c"># dev servers reject an unfamiliar Host</span>
+
+  - name: ssh
+    kind: tcp
+    remote_port: 20022    <span class="c"># omit to let the server pick</span>
+    target: 22</code></pre>
+      </div>
+      <p>Then just <code>uptunnel</code>. Both agents read this same file, and the JSON form
+      takes the same keys and needs no YAML library at all.</p>
+      <div class="note warn">
+        <span class="note-t">Secret</span>
+        <p>This file holds your token. <code>chmod 600 up.yaml</code>, and it's already in
+        <code>.gitignore</code>.</p>
+      </div>
+
+      <h3>Keep it running</h3>
+      <div class="cmd" data-where="device">
+        <div class="cmd-head"><span class="loc">on your device · linux / pi</span><button class="copy">Copy</button></div>
+<pre><code>sudo tee /etc/systemd/system/uptunnel-agent.service &gt;/dev/null &lt;&lt;'EOF'
+[Unit]
+Description=uptunnel agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi
+ExecStart=/home/pi/.uptunnel-venv/bin/uptunnel --config /home/pi/up.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now uptunnel-agent
+journalctl -u uptunnel-agent -f</code></pre>
+      </div>
+      <p>For the Node agent, keep the same unit and swap the command:</p>
+      <div class="cmd" data-where="device">
+        <div class="cmd-head"><span class="loc">on your device · unit file</span><button class="copy">Copy</button></div>
+<pre><code>ExecStart=/usr/bin/node /home/pi/up-tunnel/client-node/dist/cli.js --config /home/pi/up.yaml</code></pre>
+      </div>
+      <div class="note warn">
+        <span class="note-t">nvm and systemd</span>
+        <p>Use an absolute <code>node</code> path, not an nvm shim — nvm lives in your shell
+        profile and systemd never loads one. <code>command -v node</code> after
+        <code>nvm use</code> tells you the real path.</p>
+      </div>
+      <p>macOS launchd and Windows Task Scheduler equivalents are in
+      <code>docs/CLIENT-SETUP.md</code>.</p>
+    </section>
+
+    <section id="lifetime">
+      <h2>Staying connected</h2>
+      <p class="lede">How long a tunnel holds, what breaks it, and what happens next.</p>
+
+      <h3>How long does one WebSocket last?</h3>
+      <p><strong>Indefinitely.</strong> Nothing in the design caps it. A 30-second heartbeat
+      means the connection never sits idle long enough for anything in the path to decide it's
+      dead — the shipped nginx config allows <code>7d</code> of silence, which the heartbeat
+      keeps you from ever approaching.</p>
+
+      <h3>What actually breaks connections</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Cause</th><th>Noticed within</th><th>Recovery</th></tr></thead>
+          <tbody>
+            <tr><td>Home or carrier NAT dropping an idle mapping</td><td>prevented by the heartbeat</td><td>—</td></tr>
+            <tr><td>Laptop sleep, wifi or LTE handover</td><td class="num">~40s</td><td>automatic reconnect</td></tr>
+            <tr><td>Server restart or redeploy</td><td>immediately</td><td>automatic reconnect</td></tr>
+            <tr><td>Link black-holed with no TCP reset</td><td class="num">~60s</td><td>automatic reconnect</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The server pings every <code>HEARTBEAT_MS</code> (30s) and drops an agent that misses a
+      pong. Each agent <em>also</em> pings the server every 20s on its own schedule and
+      reconnects if that goes unanswered — which is what catches a black-holed link, where TCP
+      alone would sit there for minutes.</p>
+
+      <h3>Reconnection</h3>
+      <p>Exponential backoff from 1s to a 60s ceiling, with ±30% jitter so a fleet of devices
+      doesn't stampede the server after a restart. Every tunnel is re-registered on reconnect,
+      so URLs and ports come back unchanged.</p>
+      <div class="cmd">
+        <div class="cmd-head"><span class="loc">agent log during an outage</span><button class="copy">Copy</button></div>
+<pre><code>02:00:17 WARN  disconnected: connect ECONNREFUSED tunnel.example.com:443
+02:00:17 INFO  reconnecting in 2s
+02:00:19 INFO  connecting to wss://tunnel.example.com/control
+02:00:19 WARN  disconnected: connect ECONNREFUSED
+02:00:19 INFO  reconnecting in 4s
+02:00:23 INFO  connected as macbook (agent ag_e6c3e726caca, window 256KiB)
+02:00:23 INFO  web        https://mac.tun.example.com  -&gt;  127.0.0.1:3000</code></pre>
+      </div>
+      <p>The backoff resets to 1s only after a session that stayed up for at least 30 seconds.
+      That detail matters: without it, a server that accepts connections and immediately drops
+      them would be retried once a second forever, because every attempt technically
+      succeeded.</p>
+
+      <div class="note warn">
+        <span class="note-t">What doesn't survive</span>
+        <p>Connections that were <strong>in flight</strong>. There is no session resumption, so
+        a download in progress fails and a live SSH session drops. New connections work the
+        moment the tunnel re-registers, typically one to two seconds later.</p>
+      </div>
+
+      <div class="note warn">
+        <span class="note-t">If you add a load balancer</span>
+        <p>An ALB or NLB in front of the server brings its own idle timeout — 60s for ALB, 350s
+        for NLB — and will cull connections regardless of your nginx settings. Raise it above
+        <code>HEARTBEAT_MS</code>. Going direct to EC2, as this guide does, has no such
+        limit.</p>
+      </div>
+
+      <p>A bad token is the one failure the agent won't retry, since retrying cannot help:
+      <code>authentication failed — unauthorized: token not recognised</code>.</p>
+    </section>
+
+    <section id="recipes">
+      <h2>Recipes</h2>
+      <p class="lede">All of these run on the device you're exposing.</p>
+
+      <div class="recipes">
+        <div class="recipe">
+          <h3>A local web app</h3>
+          <p>Add <code>--rewrite-host</code> for Vite, webpack or Angular — they reject
+          requests whose <code>Host</code> they don't recognise.</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">device</span><button class="copy">Copy</button></div>
+<pre><code>uptunnel http 5173 --subdomain demo \
+         --rewrite-host</code></pre>
+          </div>
+        </div>
+
+        <div class="recipe">
+          <h3>A webhook endpoint</h3>
+          <p>Subdomains are stable across restarts, so you register the URL with Stripe or
+          GitHub once and never again.</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">device</span><button class="copy">Copy</button></div>
+<pre><code>uptunnel http 4000 --subdomain hooks
+<span class="c"># https://hooks.tun.example.com/webhook</span></code></pre>
+          </div>
+        </div>
+
+        <div class="recipe">
+          <h3>SSH into a box behind NAT</h3>
+          <p>Remote commands, <code>scp</code>, <code>sftp</code>, PTYs and VS Code
+          Remote-SSH all work over this.</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">device</span><button class="copy">Copy</button></div>
+<pre><code>uptunnel tcp 22 --remote-port 20022</code></pre>
+          </div>
+          <div class="cmd">
+            <div class="cmd-head"><span class="loc">from anywhere</span><button class="copy">Copy</button></div>
+<pre><code>ssh -p 20022 pi@tunnel.example.com
+scp -P 20022 file pi@tunnel.example.com:~/</code></pre>
+          </div>
+        </div>
+
+        <div class="recipe">
+          <h3>A whole LAN, through one port</h3>
+          <p>Expose only SSH, then forward from there. Everything inside stays behind your
+          SSH key.</p>
+          <div class="cmd">
+            <div class="cmd-head"><span class="loc">from anywhere</span><button class="copy">Copy</button></div>
+<pre><code><span class="c"># router admin on localhost:8080</span>
+ssh -p 20022 -L 8080:192.168.1.1:80 \
+    pi@tunnel.example.com
+
+<span class="c"># or a SOCKS proxy for the whole LAN</span>
+ssh -p 20022 -D 1080 pi@tunnel.example.com</code></pre>
+          </div>
+        </div>
+
+        <div class="recipe">
+          <h3>MQTT for IoT devices</h3>
+          <p>The broker stays on your Pi; only the port is public. Turn on broker
+          authentication — anyone can reach it.</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">device</span><button class="copy">Copy</button></div>
+<pre><code>uptunnel tcp 1883 --remote-port 20083
+<span class="c"># mosquitto_pub -h tunnel.example.com \</span>
+<span class="c">#   -p 20083 -t sensors/temp -m 21.5</span></code></pre>
+          </div>
+        </div>
+
+        <div class="recipe">
+          <h3>Another machine on your LAN</h3>
+          <p>The agent doesn't have to run on the machine being exposed — handy for a NAS,
+          a printer, or an appliance you can't install anything on.</p>
+          <div class="cmd" data-where="device">
+            <div class="cmd-head"><span class="loc">device</span><button class="copy">Copy</button></div>
+<pre><code>uptunnel http 192.168.1.50:80 --subdomain nas
+uptunnel tcp 192.168.1.10:22 --remote-port 20023</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <h3>WebSockets and streaming need no configuration</h3>
+      <p>The server reads the <code>Host</code> header and then pipes raw bytes, so WebSocket
+      upgrades, Server-Sent Events, long-polling and chunked responses pass through untouched.
+      <code>new WebSocket("wss://demo.tun.example.com/socket")</code> just works, and SSE events
+      arrive as your server emits them rather than buffered to the end.</p>
+    </section>
+
+    <section id="ops">
+      <h2>Running it</h2>
+      <p class="lede">Day-to-day operation, and the knobs that matter.</p>
+
+      <div class="cmd" data-where="server">
+        <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo systemctl restart uptunnel      <span class="c"># after editing tokens or env</span>
+sudo journalctl -u uptunnel -f
+sudo journalctl -u uptunnel --since '1 hour ago' | grep -i error
+
+curl -s localhost:8082/status | jq '.tunnels[] | {public, target, openConns}'</code></pre>
+      </div>
+
+      <p>The admin API binds <code>127.0.0.1</code> with no auth. Reach it over your own SSH
+      session, or set <code>ADMIN_TOKEN</code> and send
+      <code>Authorization: Bearer &lt;token&gt;</code> if you must expose it.</p>
+
+      <h3>Upgrading</h3>
+      <div class="cmd" data-where="server">
+        <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>cd /opt/uptunnel/src &amp;&amp; sudo -u uptunnel git pull
+cd server &amp;&amp; sudo -u uptunnel npm ci --omit=dev
+sudo -u uptunnel npm install --no-save typescript @types/node @types/ws
+sudo -u uptunnel npx tsc -p tsconfig.json
+sudo systemctl restart uptunnel</code></pre>
+      </div>
+      <p>Agents reconnect within a few seconds, so a restart costs a brief blip rather than a
+      trip to every device.</p>
+
+      <h3>Tuning</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Variable</th><th>Default</th><th>Raise it when</th></tr></thead>
+          <tbody>
+            <tr><td><code>STREAM_WINDOW</code></td><td class="num">262144</td><td>High-latency links feel slow. This is the per-stream credit window.</td></tr>
+            <tr><td><code>WS_MAX_BUFFERED</code></td><td class="num">8388608</td><td>You have RAM to spare and many concurrent streams per device.</td></tr>
+            <tr><td><code>HEARTBEAT_MS</code></td><td class="num">30000</td><td>Mobile or LTE devices are being dropped too eagerly.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>STREAM_WINDOW</code> is the main throughput knob. Per-stream throughput is bounded
+      by <em>window ÷ round-trip time</em> — at the 256 KiB default and a 100 ms RTT you top out
+      near 2.5 MB/s. Doubling the window doubles that ceiling, at the cost of memory per stalled
+      stream. Agents pick up the new value when they reconnect.</p>
+
+      <h3>Why memory stays flat</h3>
+      <p>Every stream is flow-controlled with a credit window in both directions: the sender
+      stops when its credit runs out, and credit only comes back once the receiver's socket has
+      actually accepted the bytes. Measured on a deliberately stalled 150 MB download, the
+      server's resident memory grew by about 15 MB rather than 150 MB.</p>
+    </section>
+
+    <section id="trouble">
+      <h2>Troubleshooting</h2>
+      <p class="lede">The server logs every rejection with a reason, so
+      <code>journalctl -u uptunnel -f</code> while reproducing is usually the fastest route to
+      an answer.</p>
+
+      <details>
+        <summary>authentication failed — token not recognised</summary>
+        <p>The token isn't in <code>tokens.json</code>, or the file was edited without a
+        restart. Tokens are read once at startup.</p>
+        <div class="cmd" data-where="server">
+          <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo systemctl restart uptunnel
+sudo journalctl -u uptunnel | grep "rejected unknown token"</code></pre>
+        </div>
+      </details>
+
+      <details>
+        <summary>Connect call failed, or connection refused</summary>
+        <p>Work outwards from the server. If localhost works but nginx doesn't, it's the nginx
+        config; if nginx works locally but not from outside, it's the security group.</p>
+        <div class="cmd" data-where="server">
+          <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>curl -s localhost:8082/healthz
+sudo ss -tlnp | grep -E '8080|8081|8082'
+curl -sI https://tunnel.example.com/healthz</code></pre>
+        </div>
+        <div class="cmd" data-where="device">
+          <div class="cmd-head"><span class="loc">on your device</span><button class="copy">Copy</button></div>
+<pre><code>dig +short tunnel.example.com
+nc -zv tunnel.example.com 443</code></pre>
+        </div>
+      </details>
+
+      <details>
+        <summary>server rejected WebSocket connection: HTTP 404</summary>
+        <p>The URL is missing the control path. It must be
+        <code>wss://tunnel.example.com/control</code>, not
+        <code>wss://tunnel.example.com</code>.</p>
+      </details>
+
+      <details>
+        <summary>502 — no device is serving this subdomain</summary>
+        <p>Either no agent is connected, or it claimed a different name. Check what the server
+        actually has:</p>
+        <div class="cmd" data-where="server">
+          <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>curl -s localhost:8082/status | jq '.tunnels[].public'</code></pre>
+        </div>
+        <p>If the agent <em>is</em> connected, it can't reach your local service. Confirm the
+        target is up on the machine running the agent with
+        <code>curl -v http://127.0.0.1:3000/</code>.</p>
+      </details>
+
+      <details>
+        <summary>404 — this is not a tunnel hostname</summary>
+        <p>The request's <code>Host</code> doesn't end in <code>HTTP_DOMAIN</code>, or it has
+        more than one label in front of it. <code>a.b.tun.example.com</code> will never route,
+        and a Let's Encrypt wildcard wouldn't cover it either. Check that
+        <code>*.tun.example.com</code> resolves and that <code>HTTP_DOMAIN</code> matches the
+        domain you're browsing.</p>
+      </details>
+
+      <details>
+        <summary>Tunnels die after about 60 seconds</summary>
+        <p>nginx's <code>proxy_read_timeout</code> is too low for a long-lived WebSocket. The
+        shipped config sets <code>7d</code> on <code>/control</code>.</p>
+        <div class="cmd" data-where="server">
+          <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>grep -A2 proxy_read_timeout /etc/nginx/sites-enabled/uptunnel</code></pre>
+        </div>
+      </details>
+
+      <details>
+        <summary>Requests land on the wrong tunnel</summary>
+        <p>Upstream connection pooling is on. The server reads <code>Host</code> once per
+        connection, so a pooled connection carrying a request for a different subdomain gets
+        misrouted. Remove any <code>keepalive</code> directive from the upstream block and make
+        sure the <code>$connection_upgrade</code> map is present.</p>
+      </details>
+
+      <details>
+        <summary>Invalid Host header, or a blank page from a dev server</summary>
+        <p>Vite, webpack-dev-server and Angular reject unfamiliar <code>Host</code> values. Add
+        <code>--rewrite-host</code>, or <code>rewrite_host: true</code> in the config.</p>
+      </details>
+
+      <details>
+        <summary>A TCP tunnel registers but connections hang</summary>
+        <p>Almost always the security group. Also confirm
+        <code>TCP_BIND_HOST=0.0.0.0</code> — with <code>127.0.0.1</code> the port only listens
+        on loopback and is unreachable from the internet.</p>
+        <div class="cmd" data-where="server">
+          <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo ss -tlnp | grep 20022
+nc -zv tunnel.example.com 20022   <span class="c"># from outside</span></code></pre>
+        </div>
+      </details>
+
+      <details>
+        <summary>agent socket congested, pausing all streams</summary>
+        <p>The device's uplink can't keep up with what's being pushed at it. This is the safety
+        valve working — the server refuses to buffer without bound. If it's constant, the device
+        is genuinely saturated.</p>
+      </details>
+
+      <h3>Every error code</h3>
+      <div class="tw">
+        <table>
+          <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>unauthorized</code></td><td>Token not in <code>tokens.json</code>. Restart after editing.</td></tr>
+            <tr><td><code>bad_version</code></td><td>Client and server protocol versions differ. Update both.</td></tr>
+            <tr><td><code>bad_request</code></td><td>Malformed frame or a missing field.</td></tr>
+            <tr><td><code>subdomain_taken</code></td><td>Another live agent already has it.</td></tr>
+            <tr><td><code>subdomain_forbidden</code></td><td>Not permitted by this token's <code>subdomains</code>, or reserved.</td></tr>
+            <tr><td><code>port_taken</code></td><td>Another tunnel has that public port.</td></tr>
+            <tr><td><code>port_forbidden</code></td><td>Outside this token's <code>ports</code> or the server range.</td></tr>
+            <tr><td><code>no_ports_available</code></td><td>The whole TCP range is in use.</td></tr>
+            <tr><td><code>too_many_tunnels</code></td><td>This token hit <code>maxTunnels</code>, default 32.</td></tr>
+            <tr><td><code>dial_failed</code></td><td>The agent couldn't reach your local service.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Reserved subdomains: <code>www</code>, <code>api</code>, <code>admin</code>,
+      <code>tunnel</code>, <code>control</code>, <code>status</code>.</p>
+
+      <h3>Testing without DNS or TLS in the way</h3>
+      <p>To decide whether a problem is in nginx or in the tunnel server, skip both by faking
+      the <code>Host</code> header straight at the HTTP frontend:</p>
+      <div class="cmd" data-where="server">
+        <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>curl -H "Host: demo.tun.example.com" http://127.0.0.1:8080/</code></pre>
+      </div>
+    </section>
+
+    <section id="reference">
+      <h2>Reference</h2>
+
+      <h3>Security worth being deliberate about</h3>
+      <ul>
+        <li>Tokens are bearer secrets in plaintext at both ends. One per device,
+        <code>chmod 600</code>, and keep the control plane on <code>wss://</code> — over
+        <code>ws://</code> the token is on the wire.</li>
+        <li>A tunnel is a hole through your NAT. Anyone who guesses the subdomain reaches the
+        service, so don't expose an unauthenticated admin panel and treat the URL as a secret.
+        Put real auth on the service, or keep it behind key-based SSH.</li>
+        <li><code>subdomains</code> and <code>ports</code> grants limit what a compromised
+        device can claim.</li>
+        <li>The systemd unit runs as a dedicated non-login user with
+        <code>ProtectSystem=strict</code> and no privileged ports.</li>
+      </ul>
+
+      <h3>Known limits</h3>
+      <ul>
+        <li><strong>No rate limiting or bandwidth caps.</strong> A busy tunnel can saturate the
+        box.</li>
+        <li><strong>Tokens are read once at startup.</strong> Adding a device needs a
+        restart.</li>
+        <li><strong>One <code>Host</code> per upstream connection</strong> is assumed — true for
+        the shipped nginx config, but it breaks if you enable upstream keepalive.</li>
+        <li><strong>In-flight connections don't survive a reconnect.</strong> No session
+        resumption, so a download or SSH session in progress dies when the control connection
+        drops.</li>
+        <li><strong>Microcontrollers aren't supported by either client.</strong> MicroPython has
+        no <code>websockets</code> library and little RAM, and Node doesn't run there at all. An
+        ESP32 or Pico agent needs a hand-rolled WebSocket framer against the protocol spec —
+        which is why the protocol is small and binary.
+        <code>client/uptunnel/protocol.py</code> is already written in MicroPython-compatible
+        style and lifts across as-is; the rest does not.</li>
+        <li><strong>No web dashboard.</strong> <code>/status</code> returns JSON.</li>
+      </ul>
+
+      <h3>What's been verified</h3>
+      <p>Tested end to end with <strong>both</strong> agents: HTTP GET and POST; 3 MB bodies
+      byte-for-byte intact; 20 concurrent multiplexed transfers; raw TCP with correct
+      half-close; <code>--rewrite-host</code> confirmed against a service that echoes the
+      <code>Host</code> it received; tunnels released on disconnect; reconnect with escalating
+      jittered backoff, re-registering every tunnel. Additionally on the Python agent: a 150 MB
+      body intact, SSE arriving incrementally rather than buffered, and WebSocket upgrades
+      including 512 KiB frames.</p>
+      <p>For SSH, through both agents: remote command execution, <code>scp</code> of a 20 MB
+      file byte-identical, and PTY allocation. Also verified via the Python agent:
+      <code>sftp</code> and nested <code>ssh -L</code> forwarding back out through the
+      tunnel.</p>
+      <p>Flow control, measured: a deliberately stalled 150 MB download grew the server's
+      resident memory by about 15 MB rather than 150 MB.</p>
+
+      <h3>Keeping three implementations honest</h3>
+      <p>The wire format is implemented three times — the Node server, the Node client and the
+      Python client. <code>tests/protocol-vectors.json</code> holds golden byte vectors that
+      both clients assert against, so a protocol change that lands in only one of them fails
+      loudly instead of silently corrupting a tunnel.</p>
+      <div class="cmd" data-where="device">
+        <div class="cmd-head"><span class="loc">on your laptop</span><button class="copy">Copy</button></div>
+<pre><code>cd client-node &amp;&amp; npm test        <span class="c"># 7 tests</span>
+cd client      &amp;&amp; pipenv run test  <span class="c"># 8 tests</span></code></pre>
+      </div>
+
+      <footer>
+        <p>The written docs in the repository go deeper than this page:</p>
+        <div class="files">
+          <span>docs/SERVER-SETUP.md — the full server install</span>
+          <span>docs/CLIENT-SETUP.md — both agents, per platform, connection lifetime</span>
+          <span>docs/USAGE.md — recipes and monitoring</span>
+          <span>docs/TROUBLESHOOTING.md — every failure mode</span>
+          <span>docs/PROTOCOL.md — the wire protocol, for writing your own agent</span>
+          <span>tests/protocol-vectors.json — golden byte vectors both clients assert</span>
+        </div>
+      </footer>
+    </section>
+  </main>
+</div>
+
+<script>
+  // Copy buttons
+  document.querySelectorAll(".cmd").forEach(function (block) {
+    var btn = block.querySelector(".copy");
+    var code = block.querySelector("code");
+    if (!btn || !code) return;
+    btn.addEventListener("click", function () {
+      navigator.clipboard.writeText(code.innerText).then(function () {
+        var was = btn.textContent;
+        btn.textContent = "Copied";
+        btn.classList.add("done");
+        setTimeout(function () {
+          btn.textContent = was;
+          btn.classList.remove("done");
+        }, 1400);
+      });
+    });
+  });
+
+  // Platform tabs
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      tabs.forEach(function (other) {
+        var panel = document.getElementById(other.getAttribute("aria-controls"));
+        var active = other === tab;
+        other.setAttribute("aria-selected", String(active));
+        if (panel) panel.hidden = !active;
+      });
+    });
+  });
+
+  // Highlight the section currently in view
+  var links = Array.prototype.slice.call(document.querySelectorAll(".toc a"));
+  var sections = links
+    .map(function (a) { return document.querySelector(a.getAttribute("href")); })
+    .filter(Boolean);
+
+  if ("IntersectionObserver" in window && sections.length) {
+    var seen = new Map();
+    var observer = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (e) { seen.set(e.target.id, e.intersectionRatio); });
+        var best = null;
+        var bestRatio = 0;
+        seen.forEach(function (ratio, id) {
+          if (ratio > bestRatio) { bestRatio = ratio; best = id; }
+        });
+        if (!best) return;
+        links.forEach(function (a) {
+          a.classList.toggle("on", a.getAttribute("href") === "#" + best);
+        });
+      },
+      { threshold: [0, 0.05, 0.25, 0.5, 0.9], rootMargin: "-10% 0px -55% 0px" }
+    );
+    sections.forEach(function (s) { observer.observe(s); });
+  }
+</script>

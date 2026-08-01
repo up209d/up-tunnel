@@ -1,0 +1,143 @@
+{
+  "_comment": [
+    "Golden byte vectors for wire protocol v1 (docs/PROTOCOL.md).",
+    "Three independent implementations encode these frames — the Node server, the Node",
+    "client, and the Python client — so these vectors are what stops them drifting.",
+    "Run: (cd client-node && npm test) and (cd client && python -m unittest discover tests)",
+    "",
+    "'hex' is the exact frame on the wire. Control-frame JSON bodies are compared as",
+    "parsed objects rather than byte-for-byte, since key order is not part of the protocol."
+  ],
+
+  "version": 1,
+
+  "frameTypes": {
+    "HELLO": 1,
+    "HELLO_OK": 2,
+    "ERROR": 3,
+    "OPEN_TUNNEL": 16,
+    "TUNNEL_OK": 17,
+    "CLOSE_TUNNEL": 18,
+    "STREAM_OPEN": 32,
+    "STREAM_DATA": 33,
+    "STREAM_EOF": 34,
+    "STREAM_ACK": 35,
+    "STREAM_RESET": 36
+  },
+
+  "encode": [
+    {
+      "name": "STREAM_DATA, stream 1, 'hello'",
+      "kind": "stream_data",
+      "streamId": 1,
+      "payloadHex": "68656c6c6f",
+      "hex": "210000000168656c6c6f"
+    },
+    {
+      "name": "STREAM_DATA, high stream id, empty payload",
+      "kind": "stream_data",
+      "streamId": 4294967294,
+      "payloadHex": "",
+      "hex": "21fffffffe"
+    },
+    {
+      "name": "STREAM_DATA carries raw bytes untouched, including NUL and 0xFF",
+      "kind": "stream_data",
+      "streamId": 258,
+      "payloadHex": "00ff0d0a1b",
+      "hex": "210000010200ff0d0a1b"
+    },
+    {
+      "name": "STREAM_EOF, stream 7",
+      "kind": "stream_only",
+      "type": 34,
+      "streamId": 7,
+      "hex": "2200000007"
+    },
+    {
+      "name": "STREAM_ACK, stream 1, 65536 bytes",
+      "kind": "stream_ack",
+      "streamId": 1,
+      "bytes": 65536,
+      "hex": "230000000100010000"
+    },
+    {
+      "name": "STREAM_ACK, max u32 credit",
+      "kind": "stream_ack",
+      "streamId": 4294967294,
+      "bytes": 4294967295,
+      "hex": "23fffffffeffffffff"
+    }
+  ],
+
+  "decode": [
+    {
+      "name": "HELLO_OK with a stream window",
+      "hex": "027b226167656e744964223a2261675f31222c2273747265616d57696e646f77223a3236323134347d",
+      "expect": {
+        "kind": "control",
+        "type": 2,
+        "body": { "agentId": "ag_1", "streamWindow": 262144 }
+      }
+    },
+    {
+      "name": "control frame with no body at all",
+      "hex": "03",
+      "expect": { "kind": "control", "type": 3, "body": {} }
+    },
+    {
+      "name": "STREAM_OPEN carries a JSON tail after the stream id",
+      "hex": "20000000097b2274756e6e656c4964223a22746e5f61227d",
+      "expect": {
+        "kind": "stream",
+        "type": 32,
+        "streamId": 9,
+        "json": { "tunnelId": "tn_a" }
+      }
+    },
+    {
+      "name": "STREAM_DATA payload is returned verbatim",
+      "hex": "210000000100ff0d0a",
+      "expect": { "kind": "stream", "type": 33, "streamId": 1, "payloadHex": "00ff0d0a" }
+    },
+    {
+      "name": "STREAM_EOF has an empty payload",
+      "hex": "2200000007",
+      "expect": { "kind": "stream", "type": 34, "streamId": 7, "payloadHex": "" }
+    }
+  ],
+
+  "decodeErrors": [
+    { "name": "empty frame", "hex": "" },
+    { "name": "stream frame truncated mid stream-id", "hex": "210000" },
+    { "name": "control frame with malformed JSON", "hex": "027b22" },
+    { "name": "control frame whose body is an array, not an object", "hex": "025b5d" }
+  ],
+
+  "hostRewrite": [
+    {
+      "name": "rewrites the Host line and leaves the rest of the head alone",
+      "target": "127.0.0.1:5173",
+      "in": "GET / HTTP/1.1\r\nHost: demo.tun.example.com\r\nAccept: */*\r\n\r\n",
+      "out": "GET / HTTP/1.1\r\nHost: 127.0.0.1:5173\r\nAccept: */*\r\n\r\n"
+    },
+    {
+      "name": "matches the header name case-insensitively",
+      "target": "127.0.0.1:3000",
+      "in": "GET / HTTP/1.1\r\nhost: demo.tun.example.com\r\n\r\n",
+      "out": "GET / HTTP/1.1\r\nHost: 127.0.0.1:3000\r\n\r\n"
+    },
+    {
+      "name": "rewrites only the first Host, never a body line that looks like one",
+      "target": "127.0.0.1:3000",
+      "in": "POST /x HTTP/1.1\r\nHost: a.example.com\r\nContent-Length: 20\r\n\r\nHost: not-a-header\r\n",
+      "out": "POST /x HTTP/1.1\r\nHost: 127.0.0.1:3000\r\nContent-Length: 20\r\n\r\nHost: not-a-header\r\n"
+    },
+    {
+      "name": "leaves a head with no Host header untouched",
+      "target": "127.0.0.1:3000",
+      "in": "GET / HTTP/1.0\r\nAccept: */*\r\n\r\n",
+      "out": "GET / HTTP/1.0\r\nAccept: */*\r\n\r\n"
+    }
+  ]
+}

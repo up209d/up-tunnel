@@ -1,0 +1,25 @@
+{
+  "name": "uptunnel-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted tunnel server: exposes local HTTP and TCP services over one WebSocket per device",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "node --env-file=.env --import tsx --watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

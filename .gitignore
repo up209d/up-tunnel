@@ -1,0 +1,52 @@
+# ---- secrets: never commit these ----
+# Server config. `npm run dev` loads server/.env via node --env-file.
+.env
+.env.*
+!.env.example
+# The systemd unit's EnvironmentFile, if a copy is ever staged in-tree.
+uptunnel.env
+
+# Agent bearer secrets. tokens.example.json is the committed template.
+tokens.json
+tokens.*.json
+!tokens.example.json
+
+# Client config — holds this device's token.
+up.yaml
+up.yml
+up.json
+!up.example.yaml
+
+# TLS material and keys of any kind.
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# ---- node ----
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- editors / os / local tooling ----
+.DS_Store
+*.log
+.idea/
+.vscode/
+.claude/settings.local.json

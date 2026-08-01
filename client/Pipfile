@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+# The agent itself, installed editable so `pipenv run uptunnel` picks up your edits.
+uptunnel = {editable = true, path = "."}
+
+[dev-packages]
+# Only needed for up.yaml configs; a .json config needs nothing extra.
+pyyaml = ">=6.0"
+
+[requires]
+python_version = "3.11"
+
+[scripts]
+up = "uptunnel"
+test = "python -m unittest discover -s tests -v"

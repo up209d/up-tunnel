@@ -1,0 +1,24 @@
+{
+  "_comment": "Copy to tokens.json and point TOKENS_FILE at it. Generate secrets with: openssl rand -hex 24",
+
+  "tokens": [
+    {
+      "name": "macbook",
+      "token": "REPLACE-with-openssl-rand-hex-24",
+      "subdomains": ["mac", "mac-*"],
+      "ports": [20000, 20019],
+      "maxTunnels": 8
+    },
+    {
+      "name": "raspberrypi",
+      "token": "REPLACE-with-a-different-secret",
+      "subdomains": ["pi", "pi-*"],
+      "ports": [20020, 20039]
+    },
+    {
+      "name": "anything-goes",
+      "token": "REPLACE-me-too-if-you-keep-this-entry",
+      "subdomains": ["*"]
+    }
+  ]
+}

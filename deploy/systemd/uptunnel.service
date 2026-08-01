@@ -1,0 +1,39 @@
+[Unit]
+Description=uptunnel server
+Documentation=https://github.com/up209d/up-tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=uptunnel
+Group=uptunnel
+WorkingDirectory=/opt/uptunnel/server
+EnvironmentFile=/etc/uptunnel/uptunnel.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=2
+
+# Public TCP tunnels bind ports in TCP_PORT_MIN..TCP_PORT_MAX, which are all above 1024,
+# so no privileged-port capability is needed.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log/uptunnel
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# Each tunnelled connection is a socket on both the public and control side.
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=uptunnel
+
+[Install]
+WantedBy=multi-user.target
