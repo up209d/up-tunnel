@@ -698,24 +698,15 @@ node --version        <span class="c"># expect v22.x — anything &gt;= 20 works
           <h3 class="step-h">A service user, and the code</h3>
           <div class="cmd" data-where="server">
             <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
-<pre><code>sudo useradd --system --create-home --home-dir /opt/uptunnel \
-             --shell /usr/sbin/nologin uptunnel
-sudo mkdir -p /etc/uptunnel /var/log/uptunnel
-sudo chown uptunnel:uptunnel /var/log/uptunnel
+<pre><code>sudo mkdir -p /var/log/uptunnel
 
-sudo git clone https://github.com/your/up-tunnel /opt/uptunnel/src
-sudo chown -R uptunnel:uptunnel /opt/uptunnel/src</code></pre>
+git clone https://github.com/your/up-tunnel ~/up-tunnel</code></pre>
           </div>
           <p>No repository yet? Push it from your laptop instead:</p>
           <div class="cmd" data-where="device">
             <div class="cmd-head"><span class="loc">on your laptop</span><button class="copy">Copy</button></div>
 <pre><code>rsync -av --exclude node_modules --exclude dist --exclude .git \
-      ./ ubuntu@tunnel.example.com:/tmp/up-tunnel/</code></pre>
-          </div>
-          <div class="cmd" data-where="server">
-            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
-<pre><code>sudo mv /tmp/up-tunnel /opt/uptunnel/src
-sudo chown -R uptunnel:uptunnel /opt/uptunnel/src</code></pre>
+      ./ ubuntu@tunnel.example.com:~/up-tunnel/</code></pre>
           </div>
         </div>
       </div>
@@ -726,13 +717,12 @@ sudo chown -R uptunnel:uptunnel /opt/uptunnel/src</code></pre>
           <h3 class="step-h">Build it</h3>
           <div class="cmd" data-where="server">
             <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
-<pre><code>cd /opt/uptunnel/src/server
-sudo -u uptunnel npm ci --omit=dev
-sudo -u uptunnel npm install --no-save typescript @types/node @types/ws
-sudo -u uptunnel npx tsc -p tsconfig.json
-sudo ln -sfn /opt/uptunnel/src/server /opt/uptunnel/server
+<pre><code>cd ~/up-tunnel/server
+npm ci --omit=dev
+npm install --no-save typescript @types/node @types/ws
+npx tsc -p tsconfig.json
 
-ls /opt/uptunnel/server/dist/index.js   <span class="c"># should exist</span></code></pre>
+ls ~/up-tunnel/server/dist/index.js   <span class="c"># should exist</span></code></pre>
           </div>
           <p><code>npm ci --omit=dev</code> installs the one runtime dependency
           (<code>ws</code>); the next line adds the compiler without recording it in
@@ -757,7 +747,7 @@ ls /opt/uptunnel/server/dist/index.js   <span class="c"># should exist</span></c
           </div>
           <div class="cmd" data-where="server">
             <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
-<pre><code>sudo tee /etc/uptunnel/tokens.json &gt;/dev/null &lt;&lt;'EOF'
+<pre><code>tee ~/up-tunnel/server/tokens.json &gt;/dev/null &lt;&lt;'EOF'
 {
   "tokens": [
     {
@@ -775,8 +765,7 @@ ls /opt/uptunnel/server/dist/index.js   <span class="c"># should exist</span></c
   ]
 }
 EOF
-sudo chown uptunnel:uptunnel /etc/uptunnel/tokens.json
-sudo chmod 600 /etc/uptunnel/tokens.json</code></pre>
+chmod 600 ~/up-tunnel/server/tokens.json</code></pre>
           </div>
           <div class="tw">
             <table>
@@ -807,7 +796,7 @@ sudo chmod 600 /etc/uptunnel/tokens.json</code></pre>
           <h3 class="step-h">Configure the server</h3>
           <div class="cmd" data-where="server">
             <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
-<pre><code>sudo tee /etc/uptunnel/uptunnel.env &gt;/dev/null &lt;&lt;'EOF'
+<pre><code>tee ~/up-tunnel/server/.env &gt;/dev/null &lt;&lt;'EOF'
 CONTROL_HOST=127.0.0.1
 CONTROL_PORT=8081
 CONTROL_PATH=/control
@@ -822,7 +811,7 @@ TCP_PORT_MIN=20000
 TCP_PORT_MAX=20099
 PUBLIC_TCP_HOST=tunnel.example.com
 
-TOKENS_FILE=/etc/uptunnel/tokens.json
+TOKENS_FILE=tokens.json
 
 ADMIN_HOST=127.0.0.1
 ADMIN_PORT=8082
@@ -830,8 +819,7 @@ ADMIN_PORT=8082
 LOG_LEVEL=info
 LOG_FORMAT=json
 EOF
-sudo chown root:uptunnel /etc/uptunnel/uptunnel.env
-sudo chmod 640 /etc/uptunnel/uptunnel.env</code></pre>
+chmod 600 ~/up-tunnel/server/.env</code></pre>
           </div>
           <p>Two details worth understanding rather than copying blindly:</p>
           <ul>
@@ -885,7 +873,7 @@ sudo systemctl enable --now certbot.timer</code></pre>
           <div class="cmd" data-where="server">
             <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
 <pre><code>sudo apt install -y nginx
-sudo cp /opt/uptunnel/src/deploy/nginx/uptunnel.conf \
+sudo cp ~/up-tunnel/deploy/nginx/uptunnel.conf \
         /etc/nginx/sites-available/uptunnel
 sudo sed -i 's/example\.com/YOURDOMAIN.com/g' /etc/nginx/sites-available/uptunnel
 sudo ln -sf /etc/nginx/sites-available/uptunnel /etc/nginx/sites-enabled/uptunnel
@@ -921,19 +909,35 @@ sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
         <div class="step-n">8</div>
         <div class="step-body">
           <h3 class="step-h">Start it</h3>
+          <p>You can run the server using either <strong>systemd</strong> (recommended for production) or <strong>PM2</strong>.</p>
+          
+          <h4>Option A: Using systemd</h4>
           <div class="cmd" data-where="server">
             <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
-<pre><code>sudo cp /opt/uptunnel/src/deploy/systemd/uptunnel.service /etc/systemd/system/
+<pre><code>sudo cp ~/up-tunnel/deploy/systemd/uptunnel.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now uptunnel
 sudo systemctl status uptunnel --no-pager</code></pre>
           </div>
+
+          <h4>Option B: Using PM2</h4>
+          <div class="cmd" data-where="server">
+            <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
+<pre><code>sudo npm install -g pm2
+cd ~/up-tunnel/server
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup</code></pre>
+          </div>
+
+          <h4>Verify</h4>
           <div class="cmd" data-where="server">
             <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
 <pre><code>curl -s localhost:8082/healthz               <span class="c"># -&gt; ok</span>
 curl -s localhost:8082/status | jq           <span class="c"># agents and tunnels</span>
 curl -sI https://tunnel.example.com/healthz  <span class="c"># -&gt; 200, through nginx</span>
-sudo journalctl -u uptunnel -f               <span class="c"># live logs</span></code></pre>
+sudo journalctl -u uptunnel -f               <span class="c"># live logs (if using systemd)</span>
+<span class="c"># or: pm2 logs uptunnel                      # live logs (if using PM2)</span></code></pre>
           </div>
           <p>If <code>/healthz</code> answers both on localhost and through nginx, the server is
           finished. On to the client.</p>
@@ -974,6 +978,7 @@ pipenv install --dev        <span class="c"># --dev also brings PyYAML, for up.y
 pipenv run uptunnel --version
 
 <span class="c"># handy entry points</span>
+<span class="c"># Set your environment variables in a .env file first</span>
 pipenv run uptunnel http 3000 --subdomain mac
 pipenv run test             <span class="c"># protocol conformance tests</span>
 pipenv shell                <span class="c"># drop into the venv</span></code></pre>
@@ -1015,6 +1020,7 @@ node dist/cli.js --version
 npm link
 
 <span class="c"># or run straight from TypeScript while developing</span>
+<span class="c"># Set your environment variables in a .env file first</span>
 npm run dev -- http 3000 --subdomain mac</code></pre>
         </div>
         <p><code>npm install</code> pulls <code>yaml</code> as an optional dependency for
@@ -1344,10 +1350,10 @@ curl -s localhost:8082/status | jq '.tunnels[] | {public, target, openConns}'</c
       <h3>Upgrading</h3>
       <div class="cmd" data-where="server">
         <div class="cmd-head"><span class="loc">on the server</span><button class="copy">Copy</button></div>
-<pre><code>cd /opt/uptunnel/src &amp;&amp; sudo -u uptunnel git pull
-cd server &amp;&amp; sudo -u uptunnel npm ci --omit=dev
-sudo -u uptunnel npm install --no-save typescript @types/node @types/ws
-sudo -u uptunnel npx tsc -p tsconfig.json
+<pre><code>cd ~/up-tunnel &amp;&amp; git pull
+cd server &amp;&amp; npm ci --omit=dev
+npm install --no-save typescript @types/node @types/ws
+npx tsc -p tsconfig.json
 sudo systemctl restart uptunnel</code></pre>
       </div>
       <p>Agents reconnect within a few seconds, so a restart costs a brief blip rather than a

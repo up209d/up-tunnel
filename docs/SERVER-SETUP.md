@@ -74,29 +74,25 @@ interpreter path in the unit file rather than relying on `node` being on `PATH`.
 
 ---
 
-## Step 2 — Service user and code
+## Step 2 — Code and directories
+
+Create the necessary directories:
 
 ```bash
-sudo useradd --system --create-home --home-dir /opt/uptunnel \
-             --shell /usr/sbin/nologin uptunnel
-sudo mkdir -p /etc/uptunnel /var/log/uptunnel
-sudo chown uptunnel:uptunnel /var/log/uptunnel
+sudo mkdir -p /var/log/uptunnel
 ```
 
 Get the repo onto the box — either clone it:
 
 ```bash
-sudo git clone https://github.com/up209d/up-tunnel /opt/uptunnel/src
-sudo chown -R uptunnel:uptunnel /opt/uptunnel/src
+git clone https://github.com/up209d/up-tunnel ~/up-tunnel
 ```
 
 …or push it from your laptop:
 
 ```bash
 rsync -av --exclude node_modules --exclude dist --exclude .git \
-      ./ ubuntu@tunnel.example.com:/tmp/up-tunnel/
-ssh ubuntu@tunnel.example.com 'sudo mv /tmp/up-tunnel /opt/uptunnel/src && \
-      sudo chown -R uptunnel:uptunnel /opt/uptunnel/src'
+      ./ ubuntu@tunnel.example.com:~/up-tunnel/
 ```
 
 ---
@@ -104,11 +100,10 @@ ssh ubuntu@tunnel.example.com 'sudo mv /tmp/up-tunnel /opt/uptunnel/src && \
 ## Step 3 — Build
 
 ```bash
-cd /opt/uptunnel/src/server
-sudo -u uptunnel npm ci --omit=dev
-sudo -u uptunnel npm install --no-save typescript @types/node @types/ws
-sudo -u uptunnel npx tsc -p tsconfig.json
-sudo ln -sfn /opt/uptunnel/src/server /opt/uptunnel/server
+cd ~/up-tunnel/server
+npm ci --omit=dev
+npm install --no-save typescript @types/node @types/ws
+npx tsc -p tsconfig.json
 ```
 
 `npm ci --omit=dev` installs the single runtime dependency (`ws`); the next line adds the
@@ -121,7 +116,7 @@ containing `ws`.
 Sanity check the build:
 
 ```bash
-ls /opt/uptunnel/server/dist/index.js
+ls ~/up-tunnel/server/dist/index.js
 ```
 
 ---
@@ -135,7 +130,7 @@ openssl rand -hex 24    # run once per device, keep the output
 ```
 
 ```bash
-sudo tee /etc/uptunnel/tokens.json >/dev/null <<'EOF'
+tee ~/up-tunnel/server/tokens.json >/dev/null <<'EOF'
 {
   "tokens": [
     {
@@ -153,8 +148,7 @@ sudo tee /etc/uptunnel/tokens.json >/dev/null <<'EOF'
   ]
 }
 EOF
-sudo chown uptunnel:uptunnel /etc/uptunnel/tokens.json
-sudo chmod 600 /etc/uptunnel/tokens.json
+chmod 600 ~/up-tunnel/server/tokens.json
 ```
 
 | Field        | Meaning |
@@ -174,7 +168,7 @@ Per-token grants mean a compromised Pi can't hijack your laptop's subdomain.
 ## Step 5 — Server configuration
 
 ```bash
-sudo tee /etc/uptunnel/uptunnel.env >/dev/null <<'EOF'
+tee ~/up-tunnel/server/.env >/dev/null <<'EOF'
 CONTROL_HOST=127.0.0.1
 CONTROL_PORT=8081
 CONTROL_PATH=/control
@@ -189,7 +183,7 @@ TCP_PORT_MIN=20000
 TCP_PORT_MAX=20099
 PUBLIC_TCP_HOST=tunnel.example.com
 
-TOKENS_FILE=/etc/uptunnel/tokens.json
+TOKENS_FILE=tokens.json
 
 ADMIN_HOST=127.0.0.1
 ADMIN_PORT=8082
@@ -197,8 +191,7 @@ ADMIN_PORT=8082
 LOG_LEVEL=info
 LOG_FORMAT=json
 EOF
-sudo chown root:uptunnel /etc/uptunnel/uptunnel.env
-sudo chmod 640 /etc/uptunnel/uptunnel.env
+chmod 600 ~/up-tunnel/server/.env
 ```
 
 Two details worth understanding:
@@ -246,7 +239,7 @@ sudo systemctl enable --now certbot.timer
 
 ```bash
 sudo apt install -y nginx
-sudo cp /opt/uptunnel/src/deploy/nginx/uptunnel.conf \
+sudo cp ~/up-tunnel/deploy/nginx/uptunnel.conf \
         /etc/nginx/sites-available/uptunnel
 sudo sed -i 's/example\.com/YOURDOMAIN.com/g' /etc/nginx/sites-available/uptunnel
 sudo ln -sf /etc/nginx/sites-available/uptunnel /etc/nginx/sites-enabled/uptunnel
@@ -278,12 +271,37 @@ directive to an upstream block for these locations.**
 
 ## Step 8 — Start the service
 
+You can run the server using either **systemd** (recommended for production) or **PM2**.
+
+### Option A: Using systemd (Recommended)
+
 ```bash
-sudo cp /opt/uptunnel/src/deploy/systemd/uptunnel.service /etc/systemd/system/
+sudo cp ~/up-tunnel/deploy/systemd/uptunnel.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now uptunnel
 sudo systemctl status uptunnel --no-pager
 ```
+
+### Option B: Using PM2
+
+If you prefer PM2 to manage your Node.js processes:
+
+```bash
+# 1. Install PM2 globally if you haven't already
+sudo npm install -g pm2
+
+# 2. Start the server with the ecosystem file
+cd ~/up-tunnel/server
+pm2 start ecosystem.config.cjs
+
+# 3. Save the PM2 process list and configure it to start on boot
+pm2 save
+pm2 startup
+```
+
+*(Note: The `--env-file` flag requires Node.js 20.6.0 or higher. If you are using an older version, you will need to use a package like `dotenv` or load the variables into the shell before running PM2).*
+
+---
 
 Verify:
 
@@ -314,10 +332,10 @@ The admin API binds `127.0.0.1` with no auth. Reach it over your own SSH session
 ### Upgrading
 
 ```bash
-cd /opt/uptunnel/src && sudo -u uptunnel git pull
-cd server && sudo -u uptunnel npm ci --omit=dev
-sudo -u uptunnel npm install --no-save typescript @types/node @types/ws
-sudo -u uptunnel npx tsc -p tsconfig.json
+cd ~/up-tunnel && git pull
+cd server && npm ci --omit=dev
+npm install --no-save typescript @types/node @types/ws
+npx tsc -p tsconfig.json
 sudo systemctl restart uptunnel
 ```
 

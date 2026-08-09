@@ -14,7 +14,7 @@ your router, nothing to open on your firewall.
 You need two things from the server before starting:
 
 - the control URL, `wss://tunnel.example.com/control`
-- this device's token from `/etc/uptunnel/tokens.json`
+- this device's token from `~/up-tunnel/server/tokens.json`
 
 ---
 
@@ -34,6 +34,7 @@ pipenv run uptunnel --version
 Useful `pipenv` entry points:
 
 ```bash
+# Set your environment variables in a .env file first
 pipenv run uptunnel http 3000 --subdomain mac   # run the agent
 pipenv run test                                 # protocol conformance tests
 pipenv shell                                    # drop into the venv
@@ -90,6 +91,7 @@ uptunnel --version
 Run it straight from TypeScript while developing, no build step:
 
 ```bash
+# Set your environment variables in a .env file first
 npm run dev -- http 3000 --subdomain mac
 ```
 

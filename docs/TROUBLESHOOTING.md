@@ -104,7 +104,7 @@ curl -s localhost:8082/status | jq '.tunnels[].public'
 ### `404 … is not a tunnel hostname`
 
 The `Host` doesn't end in `HTTP_DOMAIN`, or it has more than one label in front of it. Check
-`HTTP_DOMAIN` in `/etc/uptunnel/uptunnel.env` matches the domain you're actually browsing,
+`HTTP_DOMAIN` in `~/up-tunnel/server/.env` matches the domain you're actually browsing,
 and that `*.tun.example.com` resolves:
 
 ```bash
@@ -210,7 +210,7 @@ Throughput per stream is bounded by `STREAM_WINDOW ÷ round-trip time`. At the 2
 and 100 ms RTT that's roughly 2.5 MB/s. Raise it:
 
 ```bash
-# /etc/uptunnel/uptunnel.env
+# ~/up-tunnel/server/.env
 STREAM_WINDOW=1048576
 sudo systemctl restart uptunnel
 ```

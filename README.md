@@ -29,7 +29,7 @@ uptunnel tcp 22 --remote-port 20022     # -> ssh -p 20022 you@tunnel.example.com
 | **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** | Every error code and what to do about it |
 | **[PROTOCOL.md](docs/PROTOCOL.md)** | The wire protocol, for writing an agent in another language |
 
-There's also a single-page HTML version of the setup guide at `docs/guide.html`.
+There's also a single-page HTML version of the setup guide at `docs/index.html` (served as the GitHub Pages site).
 
 ## Layout
 

@@ -1,0 +1,2 @@
+# Documentation Updates
+Whenever you update markdown documentation (like `SERVER-SETUP.md` or `CLIENT-SETUP.md`), you MUST also update the corresponding sections in `docs/index.html`. The HTML guide is the primary user-facing documentation and must always stay in sync with the markdown files.

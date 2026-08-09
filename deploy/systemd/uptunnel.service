@@ -6,10 +6,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=uptunnel
-Group=uptunnel
-WorkingDirectory=/opt/uptunnel/server
-EnvironmentFile=/etc/uptunnel/uptunnel.env
+User=ubuntu
+WorkingDirectory=/home/ubuntu/up-tunnel/server
+EnvironmentFile=/home/ubuntu/up-tunnel/server/.env
 ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=2
