@@ -303,6 +303,17 @@ pm2 save
 pm2 startup
 ```
 
+After pulling new code, one command rebuilds `dist/` and restarts the process on it:
+
+```bash
+cd ~/up-tunnel/server
+npm run start:prod    # tsc -p tsconfig.json && pm2 startOrRestart ecosystem.config.cjs --update-env
+```
+
+`startOrRestart` also covers the first run, so it works whether or not `uptunnel` is already
+under PM2. Skipping the build is the classic way to restart onto a stale `dist/` and wonder
+why the fix did not land — `dist/` is gitignored and never arrives with a `git pull`.
+
 *(Note: The `--env-file` flag requires Node.js 20.6.0 or higher. If you are using an older version, you will need to use a package like `dotenv` or load the variables into the shell before running PM2).*
 
 ---
@@ -358,7 +369,7 @@ than manual intervention on every device.
 
 ### The health log
 
-`HEALTH_LOG_FILE` (default `/var/log/uptunnel/health.log`, empty to disable) records the
+`HEALTH_LOG_FILE` (default `health.log` in the working directory, empty to disable) records the
 connection lifecycle and nothing else: server start, agent connect/disconnect with the
 close code, every heartbeat pong with its round trip, heartbeat misses and terminations,
 tunnel open/close, and `subdomain_taken` refusals.
@@ -370,8 +381,12 @@ rotation, because it is capped at `HEALTH_LOG_MAX_LINES` (default 10000) and tri
 newest 80%. The agents write a matching log of their own; see
 [CLIENT-SETUP.md](CLIENT-SETUP.md).
 
-The systemd unit already grants `ReadWritePaths=/var/log/uptunnel`, so the default path
-works without further changes. Read it with `tail -f /var/log/uptunnel/health.log`.
+The default is relative so a local `npm run dev` just works — no `sudo mkdir`, no write
+permission on `/var/log`. Under systemd the working directory is read-only
+(`ProtectSystem=strict`), so set an absolute path in the env file as the sample above does;
+the unit grants `ReadWritePaths=/var/log/uptunnel` to match. Read it with
+`tail -f /var/log/uptunnel/health.log`. If the configured path is not writable the server
+logs `health log unavailable` once and carries on without the file.
 
 `STREAM_WINDOW` is the main throughput knob. At 256 KiB with a 100 ms round trip you top out
 near 2.5 MB/s per stream; doubling the window doubles that ceiling at the cost of memory per

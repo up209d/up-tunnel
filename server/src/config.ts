@@ -52,7 +52,10 @@ export interface Config {
   /** Cap on bytes buffered while peeking for the HTTP Host header. */
   maxHttpHeadBytes: number;
 
-  /** Bounded file recording heartbeat/session events. Null disables it. */
+  /**
+   * Bounded file recording heartbeat/session events. Null disables it.
+   * A relative path resolves against the process working directory.
+   */
   healthLogFile: string | null;
   healthLogMaxLines: number;
 
@@ -162,7 +165,11 @@ export function loadConfig(): Config {
     heartbeatMisses: envInt("HEARTBEAT_MISSES", 2),
     maxHttpHeadBytes: envInt("MAX_HTTP_HEAD_BYTES", 32 * 1024),
 
-    healthLogFile: envStr("HEALTH_LOG_FILE", "/var/log/uptunnel/health.log") || null,
+    // Relative to the working directory by default. An absolute /var/log path
+    // needs root to create and a ReadWritePaths grant under systemd, which is a
+    // lot of friction for `npm run dev`; deployments set the absolute path
+    // explicitly in the env file.
+    healthLogFile: envStr("HEALTH_LOG_FILE", "health.log") || null,
     healthLogMaxLines: envInt("HEALTH_LOG_MAX_LINES", 10_000),
 
     tokens: loadTokens(),

@@ -44,6 +44,12 @@ build/
 .mypy_cache/
 .ruff_cache/
 
+# ---- runtime logs ----
+# HEALTH_LOG_FILE defaults to ./health.log, so a dev run drops one in server/.
+# The .tmp is the trim's write-then-rename staging file; *.log does not cover it.
+health.log
+*.log.tmp
+
 # ---- editors / os / local tooling ----
 .DS_Store
 *.log
