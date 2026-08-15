@@ -13,11 +13,12 @@ internet ──TLS──> nginx ──plain──> tunnel server ──WebSocket
 - WebSocket over TLS: `wss://tunnel.<domain>/control`
 - All frames are **binary** WebSocket messages. Text messages are a protocol error.
 - Liveness uses WebSocket ping/pong. The server pings every `heartbeatMs`; an agent is
-  disconnected after `HEARTBEAT_MISSES` (default 2) consecutive ticks with nothing back
+  disconnected after `HEARTBEAT_MISSES` (default 10) consecutive ticks with nothing back
   from it. Any inbound frame, and the agent's own pings, count as liveness — not just
-  pongs. Terminating on a single missed control frame frees the agent's subdomain while
-  the agent, which gets no TCP reset back through a black-holed NAT, still believes it is
-  connected; that surfaces as an unexplained 502.
+  pongs. Terminating early frees the agent's subdomain while the agent, which gets no TCP
+  reset back through a black-holed NAT, still believes it is connected; that surfaces as an
+  unexplained 502. The agent's own ping is what recovers a dead link, so the server's side
+  of the check is deliberately the patient one.
 - The server MUST answer the agent's own pings with a pong. Agents that verify this
   (the Pico firmware does) will drop and reconnect a session that stops answering.
 - WebSocket already delimits messages, so frames carry no length prefix.

@@ -60,15 +60,18 @@ through the same code path with no special handling.
 Each stream is flow-controlled with a credit window in both directions, so one slow device
 can't make the server buffer the internet in RAM.
 
-Connections last indefinitely: a 30-second heartbeat keeps NAT mappings and proxy timeouts
-from ever expiring them, and each agent independently detects a dead link within ~40s and
-reconnects with jittered exponential backoff. Liveness is checked in **both** directions —
+Connections last indefinitely: a heartbeat in each direction keeps NAT mappings and proxy
+timeouts from ever expiring them, and each agent independently detects a dead link within
+~40s and reconnects with jittered exponential backoff. Both halves of the agent's ping are
+tunable per device (`UPTUNNEL_PING_INTERVAL`, `UPTUNNEL_PING_TIMEOUT`; 20s each by default).
+Liveness is checked in **both** directions —
 a one-sided check is how a device ends up believing it is connected while the server has
 already freed its subdomain and every request returns 502. See
 [Connection lifetime and recovery](docs/CLIENT-SETUP.md#connection-lifetime-and-recovery).
 
-Both ends keep a bounded **health log** of that lifecycle — `HEALTH_LOG_FILE` on the server
-(10000 lines) and `UPTUNNEL_HEALTH_LOG` on the agents (1000, and off unless set). When a
+Both ends keep a bounded **health log** of that lifecycle, on by default and self-trimming —
+`HEALTH_LOG_FILE` on the server (10000 lines) and `UPTUNNEL_HEALTH_LOG` on the agents (1000),
+both defaulting to `health.log` in the directory the process runs from. When a
 device goes unreachable the question is always which end gave up first, and comparing the
 two files is how you answer it. Agents also report their own LAN address in `HELLO`, which
 shows up in `GET /status` — that is how you find a headless box on its network when the

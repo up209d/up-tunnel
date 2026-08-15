@@ -193,7 +193,7 @@ LOG_FORMAT=json
 
 HEALTH_LOG_FILE=/var/log/uptunnel/health.log
 HEALTH_LOG_MAX_LINES=10000
-HEARTBEAT_MISSES=2
+HEARTBEAT_MISSES=10
 EOF
 chmod 600 ~/up-tunnel/server/.env
 ```
@@ -365,7 +365,7 @@ than manual intervention on every device.
 | `STREAM_WINDOW`   | 262144  | high-latency links feel slow — this is the per-stream credit window, and throughput is bounded by window ÷ round-trip time |
 | `WS_MAX_BUFFERED` | 8388608 | you have RAM to spare and many concurrent streams per device |
 | `HEARTBEAT_MS`    | 30000   | mobile/LTE devices get dropped too eagerly |
-| `HEARTBEAT_MISSES`| 2       | flaky links drop a pong now and then — each extra miss buys one more `HEARTBEAT_MS` of grace before the subdomain is freed |
+| `HEARTBEAT_MISSES`| 10      | flaky links drop a pong now and then — each extra miss buys one more `HEARTBEAT_MS` of grace before the subdomain is freed. Lower it only if you need dead sessions reaped faster than the default ~5 minutes; agents reconnect on their own schedule regardless |
 
 ### The health log
 

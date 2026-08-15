@@ -2,7 +2,13 @@ import { networkInterfaces } from "node:os";
 
 import { WebSocket } from "ws";
 
-import { targetLabel, type AgentConfig, type TunnelSpec } from "./config.js";
+import {
+  DEFAULT_PING_INTERVAL_MS,
+  DEFAULT_PING_TIMEOUT_MS,
+  targetLabel,
+  type AgentConfig,
+  type TunnelSpec,
+} from "./config.js";
 import { health } from "./healthlog.js";
 import { log } from "./log.js";
 import { ClientStream, type StreamPeer } from "./stream.js";
@@ -21,11 +27,6 @@ import {
 export const CLIENT_ID = "uptunnel-node/0.1.0";
 
 const HANDSHAKE_TIMEOUT_MS = 15_000;
-/**
- * We ping this often and drop the socket if the previous ping went unanswered, so a dead
- * link is noticed within two intervals rather than waiting on TCP's own timeouts.
- */
-const PING_INTERVAL_MS = 20_000;
 
 const RECONNECT_MIN_MS = 1_000;
 const RECONNECT_MAX_MS = 60_000;
@@ -111,10 +112,15 @@ export class Agent implements StreamPeer {
       });
       this.ws = ws;
 
+      const pingIntervalMs = this.cfg.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
+      const pingTimeoutMs = this.cfg.pingTimeoutMs ?? DEFAULT_PING_TIMEOUT_MS;
+
       let settled = false;
       let handshook = false;
-      let alive = true;
       let ping: NodeJS.Timeout | null = null;
+      // Armed when a ping goes out, cleared by the pong. One outstanding deadline
+      // is enough: it is the age of the *oldest* unanswered ping that matters.
+      let pongDeadline: NodeJS.Timeout | null = null;
       let handshakeTimer: NodeJS.Timeout | null = null;
       let pingSentAt = 0;
 
@@ -122,6 +128,7 @@ export class Agent implements StreamPeer {
         if (settled) return;
         settled = true;
         if (ping) clearInterval(ping);
+        if (pongDeadline) clearTimeout(pongDeadline);
         if (handshakeTimer) clearTimeout(handshakeTimer);
         this.teardownSession();
         if (err) reject(err);
@@ -150,7 +157,10 @@ export class Agent implements StreamPeer {
       });
 
       ws.on("pong", () => {
-        alive = true;
+        if (pongDeadline) {
+          clearTimeout(pongDeadline);
+          pongDeadline = null;
+        }
         health("server pong", { rttMs: pingSentAt ? Date.now() - pingSentAt : undefined });
       });
 
@@ -186,19 +196,26 @@ export class Agent implements StreamPeer {
 
           // Our own liveness check, independent of the server's. Detects a black-holed
           // link (sleeping laptop, dropped LTE) rather than waiting on TCP timeouts.
-          ping = setInterval(() => {
-            if (ws.readyState !== WebSocket.OPEN) return;
-            if (!alive) {
-              log.warn("server missed heartbeat, reconnecting");
-              health("server missed heartbeat, reconnecting");
-              ws.terminate();
-              return;
-            }
-            alive = false;
-            pingSentAt = Date.now();
-            ws.ping();
-          }, PING_INTERVAL_MS);
-          health("session up", { server: this.cfg.server, lanIp: primaryLanIp() });
+          if (pingIntervalMs > 0) {
+            ping = setInterval(() => {
+              if (ws.readyState !== WebSocket.OPEN) return;
+              pingSentAt = Date.now();
+              ws.ping();
+              if (pingTimeoutMs > 0 && !pongDeadline) {
+                pongDeadline = setTimeout(() => {
+                  log.warn("server missed heartbeat, reconnecting");
+                  health("server missed heartbeat, reconnecting", { timeoutSec: pingTimeoutMs / 1000 });
+                  ws.terminate();
+                }, pingTimeoutMs);
+              }
+            }, pingIntervalMs);
+          }
+          health("session up", {
+            server: this.cfg.server,
+            lanIp: primaryLanIp(),
+            pingSec: pingIntervalMs / 1000,
+            pingTimeoutSec: pingTimeoutMs / 1000,
+          });
           return;
         }
 

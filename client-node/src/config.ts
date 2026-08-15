@@ -24,9 +24,50 @@ export interface AgentConfig {
   name: string;
   tunnels: TunnelSpec[];
   insecure: boolean;
+  /**
+   * Keepalive ping period in milliseconds. 0 disables our own ping and leaves
+   * liveness entirely to the server's. Omitted means DEFAULT_PING_INTERVAL_MS.
+   */
+  pingIntervalMs?: number;
+  /**
+   * How long a ping may go unanswered before the socket is torn down and
+   * reconnected. 0 pings without ever giving up on the answer. Omitted means
+   * DEFAULT_PING_TIMEOUT_MS.
+   */
+  pingTimeoutMs?: number;
 }
 
 export class ConfigError extends Error {}
+
+/**
+ * Ping often enough that NAT mappings and proxy read timeouts never expire, and
+ * give up on a silent link within one further interval. Both are per-device
+ * decisions — an LTE modem or a sleepy laptop wants different numbers from a
+ * box on wired ethernet — so the environment overrides them.
+ */
+export const DEFAULT_PING_INTERVAL_MS = 20_000;
+export const DEFAULT_PING_TIMEOUT_MS = 20_000;
+
+/** Reads UPTUNNEL_PING_INTERVAL / UPTUNNEL_PING_TIMEOUT, both in seconds. */
+export function pingFromEnv(env: NodeJS.ProcessEnv = process.env): {
+  pingIntervalMs: number;
+  pingTimeoutMs: number;
+} {
+  return {
+    pingIntervalMs: seconds(env, "UPTUNNEL_PING_INTERVAL", DEFAULT_PING_INTERVAL_MS),
+    pingTimeoutMs: seconds(env, "UPTUNNEL_PING_TIMEOUT", DEFAULT_PING_TIMEOUT_MS),
+  };
+}
+
+function seconds(env: NodeJS.ProcessEnv, name: string, fallbackMs: number): number {
+  const raw = env[name];
+  if (raw === undefined || raw.trim() === "") return fallbackMs;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ConfigError(`${name} must be a non-negative number of seconds, got ${JSON.stringify(raw)}`);
+  }
+  return Math.round(value * 1000);
+}
 
 export function targetLabel(spec: TunnelSpec): string {
   return `${spec.targetHost}:${spec.targetPort}`;

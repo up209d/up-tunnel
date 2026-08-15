@@ -45,14 +45,16 @@ build/
 .ruff_cache/
 
 # ---- runtime logs ----
-# HEALTH_LOG_FILE defaults to ./health.log, so a dev run drops one in server/.
+# Both the server (HEALTH_LOG_FILE) and the agents (UPTUNNEL_HEALTH_LOG) default
+# to ./health.log, so any run started in-tree drops one next to its own source.
 # The .tmp is the trim's write-then-rename staging file; *.log does not cover it.
-health.log
+*.log
 *.log.tmp
+health.log
+uptunnel-health.log
 
 # ---- editors / os / local tooling ----
 .DS_Store
-*.log
 .idea/
 .vscode/
 .claude/settings.local.json

@@ -22,6 +22,13 @@ LOCAL_CONNECT_TIMEOUT = 10.0
 HANDSHAKE_TIMEOUT = 15.0
 MAX_HEAD_BUFFER = 32 * 1024
 
+# Ping often enough that NAT mappings and proxy read timeouts never expire, and
+# give up on a silent link within one further interval. Per-device numbers — an
+# LTE modem wants different ones from a box on wired ethernet — so the
+# environment overrides both (UPTUNNEL_PING_INTERVAL / UPTUNNEL_PING_TIMEOUT).
+PING_INTERVAL = 20.0
+PING_TIMEOUT = 20.0
+
 RECONNECT_MIN = 1.0
 RECONNECT_MAX = 60.0
 # A session must stay up this long before we treat it as healthy and reset the backoff.
@@ -93,6 +100,10 @@ class AgentConfig:
     name: str = "device"
     tunnels: list = field(default_factory=list)
     insecure: bool = False
+    # Keepalive, in seconds. None disables that half of it: no ping at all, or a
+    # ping that is sent but whose answer is never waited on.
+    ping_interval: float = PING_INTERVAL
+    ping_timeout: float = PING_TIMEOUT
 
 
 class Stream:
@@ -312,7 +323,13 @@ class Agent:
         health("connecting", server=self.cfg.server)
         # websockets drives the keepalive itself: it pings every ping_interval and
         # drops the connection if a pong does not come back within ping_timeout.
-        kwargs = dict(max_size=None, ping_interval=20, ping_timeout=20, open_timeout=15)
+        # Either may be None, which turns off that half of it.
+        kwargs = dict(
+            max_size=None,
+            ping_interval=self.cfg.ping_interval,
+            ping_timeout=self.cfg.ping_timeout,
+            open_timeout=15,
+        )
         if ssl_ctx is not None:
             kwargs["ssl"] = ssl_ctx
 
@@ -358,7 +375,8 @@ class Agent:
             )
 
             health("session up", server=self.cfg.server,
-                   agentId=body.get("agentId"), lanIp=_primary_lan_ip())
+                   agentId=body.get("agentId"), lanIp=_primary_lan_ip(),
+                   pingSec=self.cfg.ping_interval, pingTimeoutSec=self.cfg.ping_timeout)
 
             sender = asyncio.create_task(self._sender(ws))
             try:

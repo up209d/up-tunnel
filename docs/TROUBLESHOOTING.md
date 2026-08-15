@@ -34,7 +34,8 @@ They are bounded files containing only the connection lifecycle, on both ends:
 
 ```bash
 tail -f /var/log/uptunnel/health.log        # server (HEALTH_LOG_FILE)
-tail -f "$UPTUNNEL_HEALTH_LOG"              # agent  (unset by default; see CLIENT-SETUP.md)
+tail -f health.log                          # agent, in the directory it runs from
+                                            # (UPTUNNEL_HEALTH_LOG; see CLIENT-SETUP.md)
 ```
 
 The server's log lasts 10000 lines by default and the agents' 1000, so both survive long

@@ -46,7 +46,10 @@ export interface Config {
   /**
    * Consecutive unanswered pings tolerated before an agent is terminated.
    * 1 was too strict: a single dropped pong on an otherwise healthy device
-   * freed its subdomain and turned every request into a 502.
+   * freed its subdomain and turned every request into a 502. The default is
+   * deliberately generous — the agents run their own ping in the other
+   * direction and reconnect on their own within ~2 intervals, so the server
+   * giving up early only costs the subdomain; it never speeds up recovery.
    */
   heartbeatMisses: number;
   /** Cap on bytes buffered while peeking for the HTTP Host header. */
@@ -162,7 +165,7 @@ export function loadConfig(): Config {
     streamWindow: envInt("STREAM_WINDOW", 256 * 1024),
     wsMaxBuffered: envInt("WS_MAX_BUFFERED", 8 * 1024 * 1024),
     heartbeatMs: envInt("HEARTBEAT_MS", 30_000),
-    heartbeatMisses: envInt("HEARTBEAT_MISSES", 2),
+    heartbeatMisses: envInt("HEARTBEAT_MISSES", 10),
     maxHttpHeadBytes: envInt("MAX_HTTP_HEAD_BYTES", 32 * 1024),
 
     // Relative to the working directory by default. An absolute /var/log path

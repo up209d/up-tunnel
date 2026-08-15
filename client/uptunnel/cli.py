@@ -8,10 +8,32 @@ import os
 import socket
 import sys
 
-from .client import Agent, AgentConfig, AuthError, TunnelSpec, VERSION
+from .client import (
+    Agent,
+    AgentConfig,
+    AuthError,
+    PING_INTERVAL,
+    PING_TIMEOUT,
+    TunnelSpec,
+    VERSION,
+)
 from .healthlog import configure_from_env as configure_health_log
 
 DEFAULT_CONFIG_NAMES = ("up.yaml", "up.yml", "up.json")
+
+
+def _env_seconds(name: str, default: float):
+    """Reads a duration in seconds from the env. 0 means "turn this off" (None)."""
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        raise SystemExit("%s must be a number of seconds, got %r" % (name, raw))
+    if value < 0:
+        raise SystemExit("%s must not be negative, got %r" % (name, raw))
+    return value or None
 
 
 def _parse_target(value: str, default_host: str = "127.0.0.1"):
@@ -85,6 +107,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="uptunnel",
         description="Expose a local HTTP or TCP service through your own tunnel server.",
+        epilog=(
+            "environment:\n"
+            "  UPTUNNEL_SERVER, UPTUNNEL_TOKEN, UPTUNNEL_NAME\n"
+            "  UPTUNNEL_PING_INTERVAL         keepalive period in seconds (default 20; 0 disables)\n"
+            "  UPTUNNEL_PING_TIMEOUT          seconds to wait for a pong before reconnecting "
+            "(default 20; 0 waits)\n"
+            "  UPTUNNEL_HEALTH_LOG            health log path (default ./health.log; "
+            "empty disables)\n"
+            "  UPTUNNEL_HEALTH_LOG_MAX_LINES  line ceiling for that file (default 1000)\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=VERSION)
     parser.add_argument("-c", "--config", help="path to up.yaml / up.json")
@@ -176,6 +209,8 @@ def resolve(args) -> AgentConfig:
         name=name,
         tunnels=specs,
         insecure=bool(args.insecure or raw.get("insecure")),
+        ping_interval=_env_seconds("UPTUNNEL_PING_INTERVAL", PING_INTERVAL),
+        ping_timeout=_env_seconds("UPTUNNEL_PING_TIMEOUT", PING_TIMEOUT),
     )
 
 
@@ -190,7 +225,7 @@ def main(argv=None) -> int:
     if args.verbose < 2:
         logging.getLogger("websockets").setLevel(logging.INFO)
 
-    # No-op unless UPTUNNEL_HEALTH_LOG is set.
+    # On by default; UPTUNNEL_HEALTH_LOG picks the path, empty turns it off.
     configure_health_log()
 
     cfg = resolve(args)

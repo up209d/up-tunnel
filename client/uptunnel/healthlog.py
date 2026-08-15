@@ -1,15 +1,19 @@
-"""Optional bounded health log for the agent side of the connection.
+"""Bounded health log for the agent side of the connection.
 
 The console log tells you what is happening while you are watching. This tells
-you what happened at 3am: connect, handshake, every keepalive round trip, and
-how each session ended. When a tunnelled device goes unreachable the question is
-always which end gave up first, and answering it needs both ends writing to a
-file rather than to a terminal nobody was at.
+you what happened at 3am: connect, handshake, and how each session ended. When a
+tunnelled device goes unreachable the question is always which end gave up
+first, and answering it needs both ends writing to a file rather than to a
+terminal nobody was at — so this is on by default.
 
-Off unless UPTUNNEL_HEALTH_LOG names a path. Capped at
+Written to UPTUNNEL_HEALTH_LOG, defaulting to ./health.log in the working
+directory; set the variable to an empty string to turn it off. Capped at
 UPTUNNEL_HEALTH_LOG_MAX_LINES (default 1000), trimmed to the newest 80% — the
 same shape as the Node agent's healthlog.ts and the server's health log, so one
 description in the docs covers all three.
+
+Unlike the Node agent this records no per-ping line: the keepalive lives inside
+the websockets library, which never hands the pings back to us.
 """
 
 import logging
@@ -36,10 +40,26 @@ def _count_lines(path):
         return 0        # no file yet, which counts as empty
 
 
+# Relative to the working directory, the same shape as the server's
+# HEALTH_LOG_FILE: the log lands next to wherever the agent was started, which is
+# where anyone debugging it will look first. Set UPTUNNEL_HEALTH_LOG to an
+# absolute path for a service that runs from a directory you'd rather not write
+# to.
+DEFAULT_PATH = "health.log"
+
+
 def configure_from_env():
     """Read the env and open the log. Safe to call when neither var is set."""
     global _file, _max_lines, _lines, _broken
-    path = os.environ.get("UPTUNNEL_HEALTH_LOG") or None
+    # Unset means "use the default"; set-but-empty is the explicit opt out, the
+    # same convention the server's HEALTH_LOG_FILE uses.
+    path = os.environ.get("UPTUNNEL_HEALTH_LOG")
+    if path is None:
+        path = DEFAULT_PATH
+    # Nothing expands a ~ out of an env file, and a path set there is exactly
+    # where someone reaches for one, so expand it rather than creating a
+    # directory literally named ~.
+    path = os.path.expanduser(path) if path else None
     _broken = False
     try:
         _max_lines = int(os.environ.get("UPTUNNEL_HEALTH_LOG_MAX_LINES", DEFAULT_MAX_LINES))

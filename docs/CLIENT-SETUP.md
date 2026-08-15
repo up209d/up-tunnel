@@ -216,26 +216,50 @@ heartbeat keeps you from ever reaching.
 | Home/carrier NAT dropping an idle mapping | prevented by the 30s heartbeat | n/a |
 | Laptop sleep, wifi or LTE handover | up to ~40s (client heartbeat) | automatic reconnect |
 | Server restart or redeploy | immediately (clean close) | automatic reconnect |
-| Link black-holed without a TCP reset | up to ~60s (server heartbeat) | automatic reconnect |
+| Link black-holed without a TCP reset | up to ~40s (client heartbeat) | automatic reconnect |
 
-**Detection.** The server pings every `HEARTBEAT_MS` (30s default) and drops an agent after
-`HEARTBEAT_MISSES` (2 by default) consecutive ticks with nothing back from it — anything
-inbound, including the agent's own pings, counts as alive. Each agent independently pings
-the server every 20s and reconnects if that goes unanswered, which is what catches a
-black-holed link, where TCP itself would sit there for minutes.
+**Detection.** Each agent pings the server every `UPTUNNEL_PING_INTERVAL` (20s default) and
+reconnects if a ping goes unanswered for `UPTUNNEL_PING_TIMEOUT` (20s default). That is the
+check that matters for recovery: it catches a black-holed link, where TCP itself would sit
+there for minutes, and it is the agent — not the server — that has to act to restore the
+tunnel.
+
+The server pings in the other direction every `HEARTBEAT_MS` (30s default) and drops an
+agent after `HEARTBEAT_MISSES` (**10** by default, so ~5 minutes) consecutive ticks with
+nothing back from it — anything inbound, including the agent's own pings, counts as alive.
+It is deliberately slower to give up than the agent: dropping the session frees the
+subdomain, which fixes nothing on a link that is merely slow, and the agent is already
+reconnecting on its own if the link is genuinely dead.
 
 Both directions matter. A one-sided check is how a device ends up believing it is connected
 while the server has already freed its subdomain and every request returns 502.
 
-**Health log.** Set `UPTUNNEL_HEALTH_LOG` to a path and the agent additionally records the
-connection lifecycle to that file: connect, session up, every heartbeat round trip, missed
-heartbeats, and how each session ended. It is capped at `UPTUNNEL_HEALTH_LOG_MAX_LINES`
-(default **1000**) and trims to the newest 80%, so it is safe to leave on forever.
+**Tuning the ping.** Both variables are read by both agents and take **seconds**; `0`
+disables that half (no ping at all, or a ping whose answer is never waited on). Raise the
+interval on a metered LTE link, lower it behind a NAT that reaps idle mappings aggressively.
+Keep the interval below any proxy read timeout in the path, or the connection will be culled
+between pings.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `UPTUNNEL_HEALTH_LOG` | unset (disabled) | file to append health events to |
+| `UPTUNNEL_PING_INTERVAL` | 20 | seconds between pings to the server; 0 disables |
+| `UPTUNNEL_PING_TIMEOUT` | 20 | seconds a ping may go unanswered before reconnecting; 0 waits forever |
+
+**Health log.** On by default: the agent records the connection lifecycle to `health.log`
+in the directory it runs from — connect, session up, heartbeat round trips, missed
+heartbeats, and how each session ended. It is capped at `UPTUNNEL_HEALTH_LOG_MAX_LINES`
+(default **1000**) and trims to the newest 80%, so it is safe to leave on forever. Point
+`UPTUNNEL_HEALTH_LOG` somewhere else — an absolute path if the service runs from a
+directory you'd rather not write to — or set it to the empty string to turn it off.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `UPTUNNEL_HEALTH_LOG` | `health.log` (working directory) | file to append health events to; empty disables |
 | `UPTUNNEL_HEALTH_LOG_MAX_LINES` | 1000 | ceiling; a trim keeps the newest 80% |
+
+The Node agent logs a line per ping (`server pong rttMs=…`), which is what gives you a
+round-trip history. The Python agent does not: its keepalive lives inside the `websockets`
+library, which never hands the pings back to it, so its log has session boundaries only.
 
 Both agents (Python and Node) use the same variables and the same line format, and the
 server keeps a matching log of its own (`HEALTH_LOG_FILE`, see

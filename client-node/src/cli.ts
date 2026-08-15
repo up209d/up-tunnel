@@ -10,6 +10,7 @@ import {
   findDefaultConfig,
   loadConfigFile,
   parseTarget,
+  pingFromEnv,
   specsFromConfig,
   type AgentConfig,
   type TunnelSpec,
@@ -41,6 +42,10 @@ Options
 
 Environment
   UPTUNNEL_SERVER, UPTUNNEL_TOKEN, UPTUNNEL_NAME
+  UPTUNNEL_PING_INTERVAL   keepalive period in seconds (default 20; 0 disables)
+  UPTUNNEL_PING_TIMEOUT    seconds to wait for a pong before reconnecting (default 20; 0 waits)
+  UPTUNNEL_HEALTH_LOG      health log path (default ./health.log; empty disables)
+  UPTUNNEL_HEALTH_LOG_MAX_LINES  line ceiling for that file (default 1000)
 `;
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -79,7 +84,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
   if (opts.verbose) setLevel("debug");
-  // No-op unless UPTUNNEL_HEALTH_LOG is set.
+  // On by default; UPTUNNEL_HEALTH_LOG picks the path, empty turns it off.
   configureHealthLog();
 
   let cfg: AgentConfig;
@@ -184,7 +189,14 @@ async function resolveConfig(opts: Options, positionals: string[]): Promise<Agen
     }
   }
 
-  return { server, token, name, tunnels, insecure: opts.insecure || raw.insecure === true };
+  return {
+    server,
+    token,
+    name,
+    tunnels,
+    insecure: opts.insecure || raw.insecure === true,
+    ...pingFromEnv(),
+  };
 }
 
 function requireTarget(positionals: string[]): string {
