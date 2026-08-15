@@ -41,6 +41,14 @@ export class AgentSession implements StreamPeer {
   /** Set by HELLO; the client-declared label, distinct from the token's label. */
   clientName: string;
   clientVersion = "unknown";
+  /**
+   * Also from HELLO: the address the agent believes it has on its own LAN, and
+   * the port it serves there. Purely informational — it is how you find a
+   * headless device on your network. Agent-supplied, so never trusted for
+   * routing or auth.
+   */
+  lanIp: string | null = null;
+  lanPort: number | null = null;
 
   constructor(
     private readonly ws: WebSocket,

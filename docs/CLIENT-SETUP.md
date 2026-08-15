@@ -218,10 +218,41 @@ heartbeat keeps you from ever reaching.
 | Server restart or redeploy | immediately (clean close) | automatic reconnect |
 | Link black-holed without a TCP reset | up to ~60s (server heartbeat) | automatic reconnect |
 
-**Detection.** The server pings every `HEARTBEAT_MS` (30s default) and drops an agent that
-misses a pong. Each agent independently pings the server every 20s and reconnects if that
-goes unanswered — which is what catches a black-holed link, where TCP itself would sit there
-for minutes.
+**Detection.** The server pings every `HEARTBEAT_MS` (30s default) and drops an agent after
+`HEARTBEAT_MISSES` (2 by default) consecutive ticks with nothing back from it — anything
+inbound, including the agent's own pings, counts as alive. Each agent independently pings
+the server every 20s and reconnects if that goes unanswered, which is what catches a
+black-holed link, where TCP itself would sit there for minutes.
+
+Both directions matter. A one-sided check is how a device ends up believing it is connected
+while the server has already freed its subdomain and every request returns 502.
+
+**Health log.** Set `UPTUNNEL_HEALTH_LOG` to a path and the agent additionally records the
+connection lifecycle to that file: connect, session up, every heartbeat round trip, missed
+heartbeats, and how each session ended. It is capped at `UPTUNNEL_HEALTH_LOG_MAX_LINES`
+(default **1000**) and trims to the newest 80%, so it is safe to leave on forever.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `UPTUNNEL_HEALTH_LOG` | unset (disabled) | file to append health events to |
+| `UPTUNNEL_HEALTH_LOG_MAX_LINES` | 1000 | ceiling; a trim keeps the newest 80% |
+
+Both agents (Python and Node) use the same variables and the same line format, and the
+server keeps a matching log of its own (`HEALTH_LOG_FILE`, see
+[SERVER-SETUP.md](SERVER-SETUP.md)). When a device goes unreachable, the question is always
+which end gave up first — comparing the two files is how you answer it.
+
+```
+2026-08-15T03:41:54.044Z session up server=wss://tunnel.example.com/control lanIp=192.168.86.31
+2026-08-15T03:42:14.103Z server pong rttMs=103
+2026-08-15T03:45:13.981Z session ended reason='server closed the connection' uptimeSec=200
+```
+
+**Reporting the LAN address.** Each agent includes the address it believes it has on its own
+network in its `HELLO`. It shows up in the server's `health.log` and in
+`curl -s localhost:8082/status | jq '.agents[].lanIp'`. This is for headless machines: when
+a box is reachable only through the tunnel, nothing else tells you what address DHCP gave
+it. It is informational only — the server never routes or authenticates on it.
 
 **Reconnect.** Exponential backoff from 1s to a 60s ceiling, with ±30% jitter so a fleet of
 devices doesn't stampede the server after a restart. On reconnect the agent re-registers

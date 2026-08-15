@@ -190,6 +190,10 @@ ADMIN_PORT=8082
 
 LOG_LEVEL=info
 LOG_FORMAT=json
+
+HEALTH_LOG_FILE=/var/log/uptunnel/health.log
+HEALTH_LOG_MAX_LINES=10000
+HEARTBEAT_MISSES=2
 EOF
 chmod 600 ~/up-tunnel/server/.env
 ```
@@ -308,6 +312,7 @@ Verify:
 ```bash
 curl -s localhost:8082/healthz              # -> ok
 curl -s localhost:8082/status | jq          # agents and tunnels (empty for now)
+curl -s localhost:8082/status | jq '.agents[] | {name, lanIp, remoteAddr}'  # where each device lives
 curl -sI https://tunnel.example.com/healthz # -> 200 through nginx
 sudo journalctl -u uptunnel -f              # live logs
 ```
@@ -349,6 +354,24 @@ than manual intervention on every device.
 | `STREAM_WINDOW`   | 262144  | high-latency links feel slow — this is the per-stream credit window, and throughput is bounded by window ÷ round-trip time |
 | `WS_MAX_BUFFERED` | 8388608 | you have RAM to spare and many concurrent streams per device |
 | `HEARTBEAT_MS`    | 30000   | mobile/LTE devices get dropped too eagerly |
+| `HEARTBEAT_MISSES`| 2       | flaky links drop a pong now and then — each extra miss buys one more `HEARTBEAT_MS` of grace before the subdomain is freed |
+
+### The health log
+
+`HEALTH_LOG_FILE` (default `/var/log/uptunnel/health.log`, empty to disable) records the
+connection lifecycle and nothing else: server start, agent connect/disconnect with the
+close code, every heartbeat pong with its round trip, heartbeat misses and terminations,
+tunnel open/close, and `subdomain_taken` refusals.
+
+It is separate from `journalctl` on purpose. Journald owns the general chatter; this file
+answers one specific question — *the device says it was connected and the URL returned 502,
+so which end gave up and when?* — and it does so on a box where nobody configured log
+rotation, because it is capped at `HEALTH_LOG_MAX_LINES` (default 10000) and trims to the
+newest 80%. The agents write a matching log of their own; see
+[CLIENT-SETUP.md](CLIENT-SETUP.md).
+
+The systemd unit already grants `ReadWritePaths=/var/log/uptunnel`, so the default path
+works without further changes. Read it with `tail -f /var/log/uptunnel/health.log`.
 
 `STREAM_WINDOW` is the main throughput knob. At 256 KiB with a 100 ms round trip you top out
 near 2.5 MB/s per stream; doubling the window doubles that ceiling at the cost of memory per

@@ -14,6 +14,7 @@ import {
   type AgentConfig,
   type TunnelSpec,
 } from "./config.js";
+import { configureFromEnv as configureHealthLog } from "./healthlog.js";
 import { log, setLevel } from "./log.js";
 
 const VERSION = "0.1.0";
@@ -78,6 +79,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
   if (opts.verbose) setLevel("debug");
+  // No-op unless UPTUNNEL_HEALTH_LOG is set.
+  configureHealthLog();
 
   let cfg: AgentConfig;
   try {

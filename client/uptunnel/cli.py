@@ -9,6 +9,7 @@ import socket
 import sys
 
 from .client import Agent, AgentConfig, AuthError, TunnelSpec, VERSION
+from .healthlog import configure_from_env as configure_health_log
 
 DEFAULT_CONFIG_NAMES = ("up.yaml", "up.yml", "up.json")
 
@@ -188,6 +189,9 @@ def main(argv=None) -> int:
     # The websockets library logs every frame at DEBUG, which drowns out our own output.
     if args.verbose < 2:
         logging.getLogger("websockets").setLevel(logging.INFO)
+
+    # No-op unless UPTUNNEL_HEALTH_LOG is set.
+    configure_health_log()
 
     cfg = resolve(args)
     try:

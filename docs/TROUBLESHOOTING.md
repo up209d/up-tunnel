@@ -29,6 +29,17 @@ cd client && pipenv run test
 The server logs every rejection with a reason, so `journalctl -u uptunnel -f` while
 reproducing is usually the fastest path.
 
+For anything connection-related, read the **health logs** instead of the general ones.
+They are bounded files containing only the connection lifecycle, on both ends:
+
+```bash
+tail -f /var/log/uptunnel/health.log        # server (HEALTH_LOG_FILE)
+tail -f "$UPTUNNEL_HEALTH_LOG"              # agent  (unset by default; see CLIENT-SETUP.md)
+```
+
+The server's log lasts 10000 lines by default and the agents' 1000, so both survive long
+enough to explain a failure you only noticed the next morning.
+
 ---
 
 ## Agent won't connect
@@ -127,7 +138,46 @@ That token's grant in `tokens.json` doesn't cover what you asked for. Either wid
 `subdomains` / `ports` for the token, or ask for something inside the grant. `port_forbidden`
 also fires when the port is outside the server-wide `TCP_PORT_MIN..MAX`.
 
-### `502` but the agent is connected
+### The device says it is connected, but the URL returns 502
+
+The nastiest failure, because both ends look fine from where they are standing. The server
+has freed the subdomain; the agent never learned. It happens when the return path is
+black-holed — an expired NAT or conntrack entry on a home router — so the server's
+`ws.terminate()` never reaches the device as a TCP reset.
+
+Work it from the server's health log first:
+
+```bash
+grep -v "agent pong" /var/log/uptunnel/health.log | tail -30
+```
+
+| What you see | What it means |
+|---|---|
+| `agent heartbeat lost, terminating` | the server gave up. Note `uptimeSec` and `misses`; if this repeats, raise `HEARTBEAT_MISSES` or `HEARTBEAT_MS` for that link. |
+| `agent disconnected` with a `code` | a clean close — the agent or the network ended it, and the agent should already be reconnecting. |
+| `subdomain taken` | a previous session of the **same device** has not been reaped yet. The device is authenticated but nothing routes to it. It clears within a heartbeat or two; if it does not, the old session is a zombie. |
+| `tunnel opened` with no matching `tunnel closed` | the subdomain is still registered — the 502 is not a routing problem, look at the agent's local target instead. |
+| nothing at all since the last `agent pong` | the server never noticed either. Check that the process is alive and that its own clock is sane. |
+
+Then check whether the agent agrees it is connected. The Pico firmware answers this over
+the LAN:
+
+```bash
+curl -s http://<device-lan-ip>/api/health | jq .tunnel
+```
+
+`connected: true` here while the server has no such agent is the signature of this failure.
+`since_pong_ms` climbing past `idle_timeout_ms` means the device is about to drop and
+reconnect on its own — wait one cycle before intervening.
+
+**Don't know the device's LAN address?** That is what the agents report in `HELLO`:
+
+```bash
+curl -s localhost:8082/status | jq '.agents[] | {name, lanIp, lanPort, remoteAddr, connectedSec}'
+grep "agent connected" /var/log/uptunnel/health.log | tail -5
+```
+
+### `502` but the agent is connected and the subdomain is registered
 
 The agent can't reach the local service. Confirm the target is actually up **on the machine
 running the agent**:

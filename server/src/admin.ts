@@ -58,6 +58,10 @@ export class AdminServer {
         token: agent.token.name,
         client: agent.clientVersion,
         remoteAddr: agent.remoteAddr,
+        // Where to reach this device on its own network, as the device reports
+        // it. The answer to "my Pico is headless, what IP did DHCP give it?"
+        lanIp: agent.lanIp,
+        lanPort: agent.lanPort,
         connectedSec: Math.round((now - agent.connectedAt) / 1000),
         openStreams: agent.streamCount,
         tunnels: agent.tunnels.size,

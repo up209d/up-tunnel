@@ -43,8 +43,18 @@ export interface Config {
   /** Pause every stream on an agent once its socket has this many bytes queued. */
   wsMaxBuffered: number;
   heartbeatMs: number;
+  /**
+   * Consecutive unanswered pings tolerated before an agent is terminated.
+   * 1 was too strict: a single dropped pong on an otherwise healthy device
+   * freed its subdomain and turned every request into a 502.
+   */
+  heartbeatMisses: number;
   /** Cap on bytes buffered while peeking for the HTTP Host header. */
   maxHttpHeadBytes: number;
+
+  /** Bounded file recording heartbeat/session events. Null disables it. */
+  healthLogFile: string | null;
+  healthLogMaxLines: number;
 
   tokens: TokenEntry[];
 }
@@ -149,7 +159,11 @@ export function loadConfig(): Config {
     streamWindow: envInt("STREAM_WINDOW", 256 * 1024),
     wsMaxBuffered: envInt("WS_MAX_BUFFERED", 8 * 1024 * 1024),
     heartbeatMs: envInt("HEARTBEAT_MS", 30_000),
+    heartbeatMisses: envInt("HEARTBEAT_MISSES", 2),
     maxHttpHeadBytes: envInt("MAX_HTTP_HEAD_BYTES", 32 * 1024),
+
+    healthLogFile: envStr("HEALTH_LOG_FILE", "/var/log/uptunnel/health.log") || null,
+    healthLogMaxLines: envInt("HEALTH_LOG_MAX_LINES", 10_000),
 
     tokens: loadTokens(),
   };

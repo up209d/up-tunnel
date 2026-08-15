@@ -6,6 +6,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 import { AgentSession } from "./agent.js";
 import type { Config, TokenEntry } from "./config.js";
+import { health } from "./healthlog.js";
 import { logger } from "./log.js";
 import {
   FrameType,
@@ -32,6 +33,17 @@ function tokenMatches(candidate: string, known: string): boolean {
   const a = createHash("sha256").update(candidate).digest();
   const b = createHash("sha256").update(known).digest();
   return timingSafeEqual(a, b);
+}
+
+/**
+ * Accept an agent-supplied display string, or null. Length-capped and stripped
+ * of anything that would break a log line or smuggle control characters.
+ * 45 chars covers a full IPv6 literal.
+ */
+function cleanLabel(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[^\x20-\x7e]/g, "").trim().slice(0, max);
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 function findToken(cfg: Config, presented: unknown): TokenEntry | null {
@@ -92,7 +104,11 @@ export class ControlPlane {
     const remoteAddr = forwarded || req.socket.remoteAddress || "unknown";
 
     let session: AgentSession | null = null;
-    let alive = true;
+    // Consecutive pings with no answer. Reset by anything that proves the agent
+    // is still processing us, not just by a pong.
+    let misses = 0;
+    let pingSentAt = 0;
+    const openedAt = Date.now();
 
     const helloTimer = setTimeout(() => {
       if (!session) {
@@ -102,10 +118,23 @@ export class ControlPlane {
     }, HELLO_TIMEOUT_MS);
 
     ws.on("pong", () => {
-      alive = true;
+      misses = 0;
+      health("agent pong", {
+        agentId: session?.id,
+        name: session?.clientName,
+        rttMs: pingSentAt ? Date.now() - pingSentAt : undefined,
+      });
+    });
+
+    // An agent that is sending us frames, or pinging us on its own schedule, is
+    // demonstrably alive — counting only pongs meant a device could be actively
+    // serving traffic and still get terminated for one lost control frame.
+    ws.on("ping", () => {
+      misses = 0;
     });
 
     ws.on("message", (data, isBinary) => {
+      misses = 0;
       if (!isBinary) {
         this.reject(ws, CLOSE_BAD_REQUEST, "bad_request", "frames must be binary");
         return;
@@ -144,26 +173,63 @@ export class ControlPlane {
       }
     };
 
-    ws.on("close", teardown);
+    ws.on("close", (code, reason) => {
+      health("agent disconnected", {
+        agentId: session?.id,
+        name: session?.clientName,
+        lanIp: session?.lanIp,
+        remoteAddr,
+        uptimeSec: Math.round((Date.now() - openedAt) / 1000),
+        code,
+        reason: reason.toString() || undefined,
+      });
+      teardown();
+    });
     ws.on("error", (err) => {
       log.warn("websocket error", { remoteAddr, err: err.message });
+      health("agent socket error", {
+        agentId: session?.id,
+        name: session?.clientName,
+        remoteAddr,
+        err: err.message,
+      });
       teardown();
     });
 
-    // Per-connection liveness: the shared interval below flips this to false, and a
-    // missing pong on the next tick means the device is gone (common on flaky wifi/LTE).
+    // Per-connection liveness. `misses` counts consecutive ticks with nothing
+    // back from the agent at all; anything inbound resets it. Terminating on the
+    // first miss used to free the agent's subdomain over a single dropped
+    // control frame, which the device could not see (no RST comes back through
+    // a black-holed NAT) and which surfaced as an unexplained 502.
     const ping = setInterval(() => {
       if (ws.readyState !== WebSocket.OPEN) {
         clearInterval(ping);
         return;
       }
-      if (!alive) {
-        log.warn("agent missed heartbeat, terminating", { remoteAddr });
+      if (misses >= this.cfg.heartbeatMisses) {
+        log.warn("agent missed heartbeat, terminating", { remoteAddr, misses });
+        health("agent heartbeat lost, terminating", {
+          agentId: session?.id,
+          name: session?.clientName,
+          lanIp: session?.lanIp,
+          remoteAddr,
+          misses,
+          uptimeSec: Math.round((Date.now() - openedAt) / 1000),
+        });
         clearInterval(ping);
         ws.terminate();
         return;
       }
-      alive = false;
+      if (misses > 0) {
+        health("agent heartbeat miss", {
+          agentId: session?.id,
+          name: session?.clientName,
+          misses,
+          allowed: this.cfg.heartbeatMisses,
+        });
+      }
+      misses += 1;
+      pingSentAt = Date.now();
       ws.ping();
     }, this.cfg.heartbeatMs);
     ws.on("close", () => clearInterval(ping));
@@ -197,6 +263,11 @@ export class ControlPlane {
     const token = findToken(this.cfg, body.token);
     if (!token) {
       log.warn("rejected unknown token", { remoteAddr, name: body.name });
+      health("agent rejected", {
+        remoteAddr,
+        name: cleanLabel(body.name, 64),
+        reason: "unauthorized",
+      });
       this.reject(ws, CLOSE_UNAUTHORIZED, "unauthorized", "token not recognised");
       return null;
     }
@@ -209,6 +280,11 @@ export class ControlPlane {
 
     if (typeof body.name === "string" && body.name) session.clientName = body.name;
     if (typeof body.client === "string" && body.client) session.clientVersion = body.client;
+    // Agent-supplied and therefore untrusted: recorded for humans, never used
+    // for routing or auth. Bounded so a hostile agent cannot bloat the log.
+    session.lanIp = cleanLabel(body.lanIp, 45);
+    session.lanPort = typeof body.lanPort === "number" && Number.isInteger(body.lanPort)
+      && body.lanPort > 0 && body.lanPort < 65536 ? body.lanPort : null;
 
     this.sessions.add(session);
     session.send(
@@ -225,6 +301,18 @@ export class ControlPlane {
       name: session.clientName,
       token: token.name,
       remoteAddr,
+      lanIp: session.lanIp,
+      client: session.clientVersion,
+    });
+    health("agent connected", {
+      agentId: session.id,
+      name: session.clientName,
+      token: token.name,
+      remoteAddr,
+      // The reason this is written down on every reconnect: the Pico is
+      // headless, so this file is the only place its DHCP address shows up.
+      lanIp: session.lanIp,
+      lanPort: session.lanPort,
       client: session.clientVersion,
     });
     return session;

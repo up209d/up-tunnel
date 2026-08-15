@@ -4,6 +4,7 @@ import asyncio
 import logging
 import random
 import re
+import socket
 import ssl
 from dataclasses import dataclass, field
 
@@ -11,6 +12,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from . import protocol as p
+from .healthlog import health
 
 VERSION = "0.1.0"
 CLIENT_ID = "uptunnel-py/" + VERSION
@@ -31,6 +33,27 @@ log = logging.getLogger("uptunnel")
 
 
 _HOST_HEADER_RE = re.compile(rb"(?im)^Host:[^\r\n]*")
+
+
+def _primary_lan_ip():
+    """Best guess at this host's address on its own LAN, reported in HELLO.
+
+    Purely informational — the server logs it so a headless machine can be found
+    on the network, and never routes on it. The UDP socket is not connected to
+    anything: it just makes the kernel pick the interface it would use to reach
+    the internet. None on a host with no route, which is fine (the field is
+    optional).
+    """
+    s = None
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("192.0.2.1", 53))    # TEST-NET-1; no packet is sent
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        if s is not None:
+            s.close()
 
 
 def _rewrite_host_header(head: bytes, target: str) -> bytes:
@@ -252,14 +275,20 @@ class Agent:
             try:
                 await self._session()
                 log.warning("server closed the connection")
+                health("session ended", reason="server closed the connection",
+                       uptimeSec=round(loop.time() - started))
             except AuthError:
                 raise
             except (OSError, ConnectionClosed, asyncio.TimeoutError) as exc:
                 log.warning("disconnected: %s", exc)
+                health("session ended", reason=repr(str(exc)),
+                       uptimeSec=round(loop.time() - started))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
                 log.warning("session ended unexpectedly: %r", exc)
+                health("session ended", reason=repr(exc),
+                       uptimeSec=round(loop.time() - started))
 
             # Only a session that actually held up earns a reset to the minimum delay.
             if loop.time() - started >= STABLE_SESSION:
@@ -280,6 +309,9 @@ class Agent:
             ssl_ctx.verify_mode = ssl.CERT_NONE
 
         log.info("connecting to %s", self.cfg.server)
+        health("connecting", server=self.cfg.server)
+        # websockets drives the keepalive itself: it pings every ping_interval and
+        # drops the connection if a pong does not come back within ping_timeout.
         kwargs = dict(max_size=None, ping_interval=20, ping_timeout=20, open_timeout=15)
         if ssl_ctx is not None:
             kwargs["ssl"] = ssl_ctx
@@ -300,6 +332,9 @@ class Agent:
                         "token": self.cfg.token,
                         "name": self.cfg.name,
                         "client": CLIENT_ID,
+                        # Informational, so a headless box can be found on its
+                        # own network from the server's logs. See docs/PROTOCOL.md.
+                        "lanIp": _primary_lan_ip(),
                     },
                 )
             )
@@ -321,6 +356,9 @@ class Agent:
                 body.get("agentId", "?"),
                 self.window // 1024,
             )
+
+            health("session up", server=self.cfg.server,
+                   agentId=body.get("agentId"), lanIp=_primary_lan_ip())
 
             sender = asyncio.create_task(self._sender(ws))
             try:

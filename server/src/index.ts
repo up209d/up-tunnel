@@ -1,6 +1,7 @@
 import { AdminServer } from "./admin.js";
 import { loadConfig } from "./config.js";
 import { ControlPlane } from "./control.js";
+import { configure as configureHealthLog, health } from "./healthlog.js";
 import { HttpFrontend } from "./http-frontend.js";
 import { logger } from "./log.js";
 import { Registry } from "./registry.js";
@@ -10,6 +11,8 @@ const log = logger("main");
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
+  // Before anything can connect, so the first agent's handshake is recorded.
+  configureHealthLog(cfg.healthLogFile, cfg.healthLogMaxLines);
 
   const tcp = new TcpFrontend(cfg);
   const registry = new Registry(cfg, (tunnel) => tcp.bind(tunnel));
@@ -25,6 +28,13 @@ async function main(): Promise<void> {
     tokens: cfg.tokens.length,
     httpDomain: cfg.httpDomain,
     streamWindowKb: Math.round(cfg.streamWindow / 1024),
+  });
+  // A restart marker: without it, a gap in the health log is ambiguous between
+  // "the relay was down" and "no agent had anything to say".
+  health("server started", {
+    httpDomain: cfg.httpDomain,
+    heartbeatMs: cfg.heartbeatMs,
+    heartbeatMisses: cfg.heartbeatMisses,
   });
 
   let shuttingDown = false;

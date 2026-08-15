@@ -1,6 +1,9 @@
+import { networkInterfaces } from "node:os";
+
 import { WebSocket } from "ws";
 
 import { targetLabel, type AgentConfig, type TunnelSpec } from "./config.js";
+import { health } from "./healthlog.js";
 import { log } from "./log.js";
 import { ClientStream, type StreamPeer } from "./stream.js";
 import {
@@ -64,10 +67,18 @@ export class Agent implements StreamPeer {
         await this.session();
         if (this.stopping) return;
         log.warn("server closed the connection");
+        health("session ended", {
+          reason: "server closed the connection",
+          uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+        });
       } catch (err) {
         if (err instanceof AuthError) throw err;
         if (this.stopping) return;
         log.warn(`disconnected: ${(err as Error).message}`);
+        health("session ended", {
+          reason: (err as Error).message,
+          uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+        });
       }
 
       // Only a session that actually held up earns a reset back to the minimum.
@@ -90,6 +101,7 @@ export class Agent implements StreamPeer {
   private session(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       log.info(`connecting to ${this.cfg.server}`);
+      health("connecting", { server: this.cfg.server });
 
       const ws = new WebSocket(this.cfg.server, {
         perMessageDeflate: false,
@@ -104,6 +116,7 @@ export class Agent implements StreamPeer {
       let alive = true;
       let ping: NodeJS.Timeout | null = null;
       let handshakeTimer: NodeJS.Timeout | null = null;
+      let pingSentAt = 0;
 
       const finish = (err?: Error) => {
         if (settled) return;
@@ -122,6 +135,9 @@ export class Agent implements StreamPeer {
             token: this.cfg.token,
             name: this.cfg.name,
             client: CLIENT_ID,
+            // Informational, so a headless box can be found on its own network
+            // from the server's logs. See docs/PROTOCOL.md.
+            lanIp: primaryLanIp(),
           }),
           { binary: true },
         );
@@ -135,6 +151,7 @@ export class Agent implements StreamPeer {
 
       ws.on("pong", () => {
         alive = true;
+        health("server pong", { rttMs: pingSentAt ? Date.now() - pingSentAt : undefined });
       });
 
       ws.on("message", (data, isBinary) => {
@@ -173,12 +190,15 @@ export class Agent implements StreamPeer {
             if (ws.readyState !== WebSocket.OPEN) return;
             if (!alive) {
               log.warn("server missed heartbeat, reconnecting");
+              health("server missed heartbeat, reconnecting");
               ws.terminate();
               return;
             }
             alive = false;
+            pingSentAt = Date.now();
             ws.ping();
           }, PING_INTERVAL_MS);
+          health("session up", { server: this.cfg.server, lanIp: primaryLanIp() });
           return;
         }
 
@@ -373,4 +393,23 @@ export class Agent implements StreamPeer {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Best guess at this host's address on its own LAN, reported in HELLO so the
+ * server's log can answer "where is this machine on the network". Purely
+ * informational; the server never routes on it. Null on a host with no
+ * non-loopback interface, which is fine — the field is optional.
+ */
+function primaryLanIp(): string | null {
+  try {
+    for (const addrs of Object.values(networkInterfaces())) {
+      for (const a of addrs ?? []) {
+        if (a.family === "IPv4" && !a.internal) return a.address;
+      }
+    }
+  } catch {
+    /* not worth failing a connection over */
+  }
+  return null;
 }

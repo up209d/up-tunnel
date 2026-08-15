@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { subdomainAllowed, type Config } from "./config.js";
+import { health } from "./healthlog.js";
 import { logger } from "./log.js";
 import type { AgentSession } from "./agent.js";
 import { TunnelError, type OpenTunnelRequest, type Tunnel } from "./types.js";
@@ -115,6 +116,15 @@ export class Registry {
       }
       const existing = this.bySubdomain.get(sub);
       if (existing) {
+        // Worth writing down: the usual cause is the previous session of the
+        // SAME device not yet reaped, which is exactly the window in which the
+        // device is authenticated but nothing can route to it.
+        health("subdomain taken", {
+          subdomain: sub,
+          claimedBy: agent.clientName,
+          heldBy: existing.agent.clientName,
+          heldById: existing.agent.id,
+        });
         throw new TunnelError(
           "subdomain_taken",
           `${sub} is already served by ${existing.agent.clientName}`,
@@ -142,6 +152,14 @@ export class Registry {
       at: tunnel.subdomain ?? tunnel.publicPort,
       agent: agent.clientName,
       target: `${tunnel.target.host}:${tunnel.target.port}`,
+    });
+    health("tunnel opened", {
+      id: tunnel.id,
+      kind: tunnel.kind,
+      at: tunnel.subdomain ?? tunnel.publicPort,
+      agentId: agent.id,
+      agent: agent.clientName,
+      lanIp: agent.lanIp,
     });
     return tunnel;
   }
@@ -183,6 +201,12 @@ export class Registry {
     tunnel.listener?.close();
     tunnel.listener = undefined;
     log.info("tunnel closed", { id: tunnel.id, at: tunnel.subdomain ?? tunnel.publicPort });
+    health("tunnel closed", {
+      id: tunnel.id,
+      at: tunnel.subdomain ?? tunnel.publicPort,
+      agentId: tunnel.agent.id,
+      agent: tunnel.agent.clientName,
+    });
   }
 
   closeAllFor(agent: AgentSession): void {

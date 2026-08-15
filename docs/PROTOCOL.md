@@ -12,8 +12,14 @@ internet ──TLS──> nginx ──plain──> tunnel server ──WebSocket
 
 - WebSocket over TLS: `wss://tunnel.<domain>/control`
 - All frames are **binary** WebSocket messages. Text messages are a protocol error.
-- Liveness uses WebSocket ping/pong. The server pings every `heartbeatMs`; an agent that
-  misses two consecutive pongs is disconnected.
+- Liveness uses WebSocket ping/pong. The server pings every `heartbeatMs`; an agent is
+  disconnected after `HEARTBEAT_MISSES` (default 2) consecutive ticks with nothing back
+  from it. Any inbound frame, and the agent's own pings, count as liveness — not just
+  pongs. Terminating on a single missed control frame frees the agent's subdomain while
+  the agent, which gets no TCP reset back through a black-holed NAT, still believes it is
+  connected; that surfaces as an unexplained 502.
+- The server MUST answer the agent's own pings with a pong. Agents that verify this
+  (the Pico firmware does) will drop and reconnect a session that stops answering.
 - WebSocket already delimits messages, so frames carry no length prefix.
 
 ## Frame layout
@@ -48,8 +54,18 @@ originates on the public internet. Agents never send `STREAM_OPEN`.
 Agent, immediately after the socket opens:
 
 ```json
-0x01 {"version": 1, "token": "<secret>", "name": "laptop", "client": "uptunnel-py/0.1.0"}
+0x01 {"version": 1, "token": "<secret>", "name": "laptop", "client": "uptunnel-py/0.1.0",
+      "lanIp": "192.168.1.42", "lanPort": 80}
 ```
+
+`lanIp` and `lanPort` are **optional and purely informational**: the address the agent
+believes it has on its own network. They exist for headless devices — when a box is
+reachable only through the tunnel, nothing else tells you what address DHCP gave it. The
+server records them in `health.log` and exposes them on `GET /status`, refreshed on every
+reconnect.
+
+They are agent-supplied and therefore untrusted. The server length-caps them, strips
+control characters, and **never uses them for routing or authentication**.
 
 Server replies:
 
